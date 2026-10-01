@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+  <title>Sub-agents</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="agents.css">
+</head>
+<body class="agents">
+  <header>
+    <div class="title"><span id="headDot" class="adot"></span><span>Sub-agents</span><span id="count"></span></div>
+    <button id="closeBtn" class="icon" title="Hide panel" aria-label="Hide panel">
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </header>
+  <main id="list">
+    <div class="empty" id="empty">No sub-agents yet.<br>Ask Claude to “start an agent to…”.</div>
+  </main>
+  <script src="agents.js"></script>
+</body>
+</html>

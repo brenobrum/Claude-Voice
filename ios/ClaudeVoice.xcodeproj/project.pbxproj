@@ -1,0 +1,463 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		03A48EC3E110FEFA4195485D /* VoiceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0193B3ED3EE912394C1C6E8B /* VoiceController.swift */; };
+		159B64512A28483CD2C383B2 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = F0797F394E5754B305F47121 /* WebRTC */; };
+		15C9382D4FAE45EC025BEF1B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2937F0172B6DD84784F3EC7 /* SettingsView.swift */; };
+		163A504521F50E29E9E740D7 /* ChannelClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 274D926EDA637DF290361F47 /* ChannelClient.swift */; };
+		221863C4B12BEE45818F5380 /* LiveSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5F15AE27AA7D4C11269D9FC /* LiveSession.swift */; };
+		27361510705CD565398AC9D4 /* AudioIO.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08F24B0EA5AEBA72B2C1FBB9 /* AudioIO.swift */; };
+		28BDE02F30E87BF940CCDCA4 /* AgentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6592A4BA260E37D405B4DBB4 /* AgentsView.swift */; };
+		34792198A7A16655C274E1AE /* Speaker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01EC84B47E5611D23E8E3DCD /* Speaker.swift */; };
+		37047206928AC356933C7B07 /* SessionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FAADC9B63F14DC460A32907 /* SessionsView.swift */; };
+		412DD770A1808FE64F07EF47 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F09A4FC5106FEFD378CFE7D /* ContentView.swift */; };
+		4E189C810853A09A281C585D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CDE33ADA918015C0C5FC4084 /* Assets.xcassets */; };
+		64532F14504CCB8D5A0D1E70 /* Transcriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0848355E5E771E12D0DE488C /* Transcriber.swift */; };
+		A2C3F37D03EA27142260CD28 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BB4050461D5D45CBFCEEE86 /* Theme.swift */; };
+		B032FAB420D82D10597A2A9F /* Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDEC2305F0B224700A809087 /* Settings.swift */; };
+		B56BAE856DD06F9229EB0AE1 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B73D076B1B2FA1487CF3D4A /* Keychain.swift */; };
+		C18ED002ADEFBAD7CE2A91FF /* ClaudeVoiceApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3A0C07C1DA80A7E918D3417 /* ClaudeVoiceApp.swift */; };
+		D7C1DCBAEA5E9317CECC86DB /* OrbView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 684E0EA271393E6BC5A8E548 /* OrbView.swift */; };
+		D97D9DABD896CDC0560242B1 /* Discovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59214D75BC40246F36E29B23 /* Discovery.swift */; };
+		DB2E6BA4C0835A1565615D54 /* Orb.metal in Sources */ = {isa = PBXBuildFile; fileRef = B45BCBC14C849D002C683AD0 /* Orb.metal */; };
+		F95C76DC13B11A04A48CE520 /* RealtimeSocket.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB216C8753370AAC7948BBC9 /* RealtimeSocket.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0193B3ED3EE912394C1C6E8B /* VoiceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceController.swift; sourceTree = "<group>"; };
+		01EC84B47E5611D23E8E3DCD /* Speaker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Speaker.swift; sourceTree = "<group>"; };
+		0848355E5E771E12D0DE488C /* Transcriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transcriber.swift; sourceTree = "<group>"; };
+		08F24B0EA5AEBA72B2C1FBB9 /* AudioIO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioIO.swift; sourceTree = "<group>"; };
+		274D926EDA637DF290361F47 /* ChannelClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelClient.swift; sourceTree = "<group>"; };
+		3214DD5579D8F8E461A1C01F /* ClaudeVoice.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = ClaudeVoice.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		4FAADC9B63F14DC460A32907 /* SessionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionsView.swift; sourceTree = "<group>"; };
+		59214D75BC40246F36E29B23 /* Discovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Discovery.swift; sourceTree = "<group>"; };
+		6592A4BA260E37D405B4DBB4 /* AgentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentsView.swift; sourceTree = "<group>"; };
+		684E0EA271393E6BC5A8E548 /* OrbView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrbView.swift; sourceTree = "<group>"; };
+		6B73D076B1B2FA1487CF3D4A /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
+		7F09A4FC5106FEFD378CFE7D /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		8D850888FD601C75DA19D817 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		9BB4050461D5D45CBFCEEE86 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		B45BCBC14C849D002C683AD0 /* Orb.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Orb.metal; sourceTree = "<group>"; };
+		C2937F0172B6DD84784F3EC7 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		C3A0C07C1DA80A7E918D3417 /* ClaudeVoiceApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeVoiceApp.swift; sourceTree = "<group>"; };
+		CDE33ADA918015C0C5FC4084 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		D5F15AE27AA7D4C11269D9FC /* LiveSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSession.swift; sourceTree = "<group>"; };
+		DB216C8753370AAC7948BBC9 /* RealtimeSocket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeSocket.swift; sourceTree = "<group>"; };
+		FDEC2305F0B224700A809087 /* Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		178FB4716CC91B342E6892EE /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				159B64512A28483CD2C383B2 /* WebRTC in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		02E4098690979A2836844700 = {
+			isa = PBXGroup;
+			children = (
+				9D01DDD68835FBD9B534E7A5 /* ClaudeVoice */,
+				AAA2816C226AB030728F1F38 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		11C44017ED0C452AA548C6E9 /* Model */ = {
+			isa = PBXGroup;
+			children = (
+				6B73D076B1B2FA1487CF3D4A /* Keychain.swift */,
+				FDEC2305F0B224700A809087 /* Settings.swift */,
+			);
+			path = Model;
+			sourceTree = "<group>";
+		};
+		17D8E6B08314788BABA24C60 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				C3A0C07C1DA80A7E918D3417 /* ClaudeVoiceApp.swift */,
+				0193B3ED3EE912394C1C6E8B /* VoiceController.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		466E9143E0B38C31908E5878 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				6592A4BA260E37D405B4DBB4 /* AgentsView.swift */,
+				7F09A4FC5106FEFD378CFE7D /* ContentView.swift */,
+				B45BCBC14C849D002C683AD0 /* Orb.metal */,
+				684E0EA271393E6BC5A8E548 /* OrbView.swift */,
+				4FAADC9B63F14DC460A32907 /* SessionsView.swift */,
+				C2937F0172B6DD84784F3EC7 /* SettingsView.swift */,
+				9BB4050461D5D45CBFCEEE86 /* Theme.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		9D01DDD68835FBD9B534E7A5 /* ClaudeVoice */ = {
+			isa = PBXGroup;
+			children = (
+				CDE33ADA918015C0C5FC4084 /* Assets.xcassets */,
+				8D850888FD601C75DA19D817 /* Info.plist */,
+				17D8E6B08314788BABA24C60 /* App */,
+				EC53B0713FB25FD8E03E3926 /* Audio */,
+				11C44017ED0C452AA548C6E9 /* Model */,
+				C55265063CA753D556A768CE /* Net */,
+				466E9143E0B38C31908E5878 /* Views */,
+				C509607F8375F6092E55687D /* Voice */,
+			);
+			path = ClaudeVoice;
+			sourceTree = "<group>";
+		};
+		AAA2816C226AB030728F1F38 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				3214DD5579D8F8E461A1C01F /* ClaudeVoice.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		C509607F8375F6092E55687D /* Voice */ = {
+			isa = PBXGroup;
+			children = (
+				D5F15AE27AA7D4C11269D9FC /* LiveSession.swift */,
+				DB216C8753370AAC7948BBC9 /* RealtimeSocket.swift */,
+				01EC84B47E5611D23E8E3DCD /* Speaker.swift */,
+				0848355E5E771E12D0DE488C /* Transcriber.swift */,
+			);
+			path = Voice;
+			sourceTree = "<group>";
+		};
+		C55265063CA753D556A768CE /* Net */ = {
+			isa = PBXGroup;
+			children = (
+				274D926EDA637DF290361F47 /* ChannelClient.swift */,
+				59214D75BC40246F36E29B23 /* Discovery.swift */,
+			);
+			path = Net;
+			sourceTree = "<group>";
+		};
+		EC53B0713FB25FD8E03E3926 /* Audio */ = {
+			isa = PBXGroup;
+			children = (
+				08F24B0EA5AEBA72B2C1FBB9 /* AudioIO.swift */,
+			);
+			path = Audio;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		6196838E6A245352D79EDA76 /* ClaudeVoice */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 27AB8CAE03DDED2E6093DC15 /* Build configuration list for PBXNativeTarget "ClaudeVoice" */;
+			buildPhases = (
+				CE363DB93257D7BF0AFB9B15 /* Sources */,
+				FDE0DC766A30730B16D0F07E /* Resources */,
+				178FB4716CC91B342E6892EE /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ClaudeVoice;
+			packageProductDependencies = (
+				F0797F394E5754B305F47121 /* WebRTC */,
+			);
+			productName = ClaudeVoice;
+			productReference = 3214DD5579D8F8E461A1C01F /* ClaudeVoice.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		F3C604987DD95BF8F9971619 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					6196838E6A245352D79EDA76 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 6389C8B66D20C74387B77CB5 /* Build configuration list for PBXProject "ClaudeVoice" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 02E4098690979A2836844700;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				8160C4525D799F5E323A6F42 /* XCRemoteSwiftPackageReference "WebRTC" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = AAA2816C226AB030728F1F38 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				6196838E6A245352D79EDA76 /* ClaudeVoice */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		FDE0DC766A30730B16D0F07E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4E189C810853A09A281C585D /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		CE363DB93257D7BF0AFB9B15 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				28BDE02F30E87BF940CCDCA4 /* AgentsView.swift in Sources */,
+				27361510705CD565398AC9D4 /* AudioIO.swift in Sources */,
+				163A504521F50E29E9E740D7 /* ChannelClient.swift in Sources */,
+				C18ED002ADEFBAD7CE2A91FF /* ClaudeVoiceApp.swift in Sources */,
+				412DD770A1808FE64F07EF47 /* ContentView.swift in Sources */,
+				D97D9DABD896CDC0560242B1 /* Discovery.swift in Sources */,
+				B56BAE856DD06F9229EB0AE1 /* Keychain.swift in Sources */,
+				221863C4B12BEE45818F5380 /* LiveSession.swift in Sources */,
+				DB2E6BA4C0835A1565615D54 /* Orb.metal in Sources */,
+				D7C1DCBAEA5E9317CECC86DB /* OrbView.swift in Sources */,
+				F95C76DC13B11A04A48CE520 /* RealtimeSocket.swift in Sources */,
+				37047206928AC356933C7B07 /* SessionsView.swift in Sources */,
+				B032FAB420D82D10597A2A9F /* Settings.swift in Sources */,
+				15C9382D4FAE45EC025BEF1B /* SettingsView.swift in Sources */,
+				34792198A7A16655C274E1AE /* Speaker.swift in Sources */,
+				A2C3F37D03EA27142260CD28 /* Theme.swift in Sources */,
+				64532F14504CCB8D5A0D1E70 /* Transcriber.swift in Sources */,
+				03A48EC3E110FEFA4195485D /* VoiceController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		648E74A7FEEE7447780212D8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ClaudeVoice/Info.plist;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "dev.local.claude-voice";
+				PRODUCT_NAME = "Claude Voice";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		64AA33D96FC462B282E1FCCA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		DD859A8DA46BE8FE08CE76C9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		EE51277B7A404BEEB8868A76 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ClaudeVoice/Info.plist;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "dev.local.claude-voice";
+				PRODUCT_NAME = "Claude Voice";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		27AB8CAE03DDED2E6093DC15 /* Build configuration list for PBXNativeTarget "ClaudeVoice" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				648E74A7FEEE7447780212D8 /* Debug */,
+				EE51277B7A404BEEB8868A76 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		6389C8B66D20C74387B77CB5 /* Build configuration list for PBXProject "ClaudeVoice" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				64AA33D96FC462B282E1FCCA /* Debug */,
+				DD859A8DA46BE8FE08CE76C9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		8160C4525D799F5E323A6F42 /* XCRemoteSwiftPackageReference "WebRTC" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/stasel/WebRTC.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 140.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		F0797F394E5754B305F47121 /* WebRTC */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8160C4525D799F5E323A6F42 /* XCRemoteSwiftPackageReference "WebRTC" */;
+			productName = WebRTC;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = F3C604987DD95BF8F9971619 /* Project object */;
+}

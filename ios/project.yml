@@ -1,0 +1,51 @@
+name: ClaudeVoice
+options:
+  bundleIdPrefix: dev.local
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+packages:
+  WebRTC:
+    url: https://github.com/stasel/WebRTC.git
+    from: "140.0.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    DEVELOPMENT_TEAM: ""
+targets:
+  ClaudeVoice:
+    type: application
+    platform: iOS
+    sources: [ClaudeVoice]
+    dependencies:
+      - package: WebRTC
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.local.claude-voice
+        PRODUCT_NAME: Claude Voice
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_STYLE: Automatic
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        GENERATE_INFOPLIST_FILE: NO
+    info:
+      path: ClaudeVoice/Info.plist
+      properties:
+        CFBundleDisplayName: Claude Voice
+        CFBundleShortVersionString: "0.3.0"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        UIApplicationSupportsIndirectInputEvents: true
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UIUserInterfaceStyle: Dark
+        UIBackgroundModes: [audio]
+        NSMicrophoneUsageDescription: Claude Voice listens to you so your speech can be transcribed and sent to your Claude Code session.
+        NSCameraUsageDescription: The camera scans the pairing QR code shown by "claude-voice pair" on your Mac.
+        NSLocalNetworkUsageDescription: Claude Voice finds and connects to the Claude Code sessions running on your Mac.
+        NSBonjourServices: [_claudevoice._tcp]
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        CFBundleURLTypes:
+          - CFBundleURLName: dev.local.claude-voice
+            CFBundleURLSchemes: [claudevoice]

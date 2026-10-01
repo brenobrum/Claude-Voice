@@ -1,0 +1,28 @@
+body.agents { background: var(--bg); user-select: text; }
+body.agents header { padding: 10px 8px 0 14px; height: 40px; -webkit-app-region: no-drag; } /* docked: moves with the main window */
+body.agents .title { color: var(--text); font-weight: 600; font-size: 12px; }
+#count { color: var(--muted); font-weight: 400; }
+
+#list { flex: 1; overflow-y: auto; padding: 6px 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+#list .empty { margin: auto; text-align: center; line-height: 1.6; }
+
+.agent { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; flex: none; }
+.agent.running { border-color: rgba(232,121,74,.45); }
+.agent .head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; user-select: none; }
+.agent .name { flex: 1; min-width: 0; font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agent .meta { font: 11px ui-monospace, Menlo, monospace; color: var(--muted); flex: none; }
+.agent .stop { font-size: 11px; padding: 1px 8px; border-radius: 6px; background: transparent; color: var(--muted); }
+.agent .stop:hover { color: var(--danger); border-color: var(--danger); }
+.agent .activity { padding: 0 10px 8px 27px; margin-top: -4px; font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agent .log {
+  display: none; border-top: 1px solid var(--border); max-height: 260px; overflow-y: auto; padding: 6px 10px 8px;
+  font: 11px/1.45 ui-monospace, Menlo, monospace; background: rgba(0,0,0,.25);
+}
+.agent.open .log { display: block; }
+.log .l { white-space: pre-wrap; word-break: break-word; margin: 2px 0; }
+.log .l.tool { color: #c9b8a8; }
+.log .l.tool::before { content: '› '; color: var(--accent); }
+.log .l.text { color: var(--text); font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 12px; }
+.log .l.prompt { color: var(--muted); font-style: italic; border-left: 2px solid var(--border); padding-left: 6px; }
+.log .l.result { color: var(--text); font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 12px; border-left: 2px solid #3fb950; padding-left: 6px; }
+.log .l.error { color: var(--danger); }
