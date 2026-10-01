@@ -3,7 +3,8 @@
 #   claude-voice pair    pair the iPhone app with this Mac (see bin/pair.js)
 #   claude-voice hooks   install the hooks that show Claude's activity in the apps (see bin/hooks.js)
 #   claude-voice shortcut  make Ctrl+Option+Cmd+Space open the app from anywhere (see bin/shortcut.js)
-if [ "$1" = "pair" ] || [ "$1" = "hooks" ] || [ "$1" = "shortcut" ]; then
+#   claude-voice local-voice  set up the free voice that runs on this Mac (see bin/local-voice.js)
+if [ "$1" = "pair" ] || [ "$1" = "hooks" ] || [ "$1" = "shortcut" ] || [ "$1" = "local-voice" ]; then
   cmd=$1
   shift
   DIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)

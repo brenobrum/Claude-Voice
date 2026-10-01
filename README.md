@@ -2,10 +2,10 @@
 
 Talk to a **live Claude Code terminal session** and hear it answer, in real time.
 
-- **Voice engine (default): `gpt-live-1`.** GPT-Live runs the whole spoken conversation full duplex, so it listens while it speaks and you can talk over it. It hands every real request to your Claude Code thread through client delegation, and then says Claude's answer in its own words.
+- **Voice engine (default): `realtime`.** Realtime transcription plus `gpt-realtime-2` reading Claude's reply word for word. (GPT-Live, `gpt-live-1`, is disabled for now.)
 - **Other engines (Settings):**
-  - `realtime`: Realtime transcription plus `gpt-realtime-2.1` reading Claude's reply word for word.
   - `tts`: the same, but with `gpt-4o-mini-tts`.
+  - `local` ("On this Mac"): Chatterbox Multilingual running on Apple Silicon, free. Clone any voice from a 10–20 s recording in Settings → Clone a voice. Set it up once with `claude-voice local-voice` (needs `uv`; downloads ~2.6 GB). Transcription still uses OpenAI.
 - Your words reach the thread as `← voice: …` through a Claude Code channel in terminal `claude-voice` sessions, or as Monitor events in desktop-app sessions. Claude replies with the `speak` tool.
 - Tool-permission prompts are relayed to the app: say "yes" or "no", or click Allow / Deny.
 - **Live activity:** under the orb (and at the bottom of the message history) the apps show what the thread is doing: "Thinking…", the tool it's running (e.g. `Bash  npm test`) with elapsed time, and agents working in the background. Your sent messages keep a "processing" shimmer until the thread goes idle. This comes from Claude Code hooks: run `claude-voice hooks` once (adds them to `~/.claude/settings.json`; `--remove` undoes it), then start a new session. Without them the indicator only lasts until Claude's first spoken reply.

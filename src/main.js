@@ -10,16 +10,22 @@ const QRErrorCorrectLevel = require('qrcode-terminal/vendor/QRCode/QRErrorCorrec
 
 const SETTINGS_VERSION = 7;
 
+// GPT-Live is blocked for now (it isn't working); the app stays on GPT-Realtime or TTS.
+const LIVE_DISABLED = true;
+const LIVE_ONLY_VOICES = ['bossa', 'tempo', 'gleam', 'meridian', 'vesper', 'willow', 'stone', 'ripple', 'quartz', 'delta', 'cinder', 'beacon'];
+
 const DEFAULTS = {
   openaiKey: '',
   // 'live'     = GPT-Live full-duplex conversation; Claude is its delegated backend
   // 'realtime' = Realtime transcription + gpt-realtime voice reading Claude's text
   // 'tts'      = Realtime transcription + /v1/audio/speech
+  // 'local'    = Realtime transcription + Chatterbox on this Mac (local-tts/server.py), free
   ttsEngine: 'realtime',
   liveModel: 'gpt-live-1',
   realtimeModel: 'gpt-realtime-2',
   ttsModel: 'gpt-4o-mini-tts',
   voice: 'marin',
+  localVoice: 'default',        // 'default' (built in) or a cloned voice in ~/.claude-voice/voices
   sttModel: 'gpt-4o-transcribe',
   language: 'pt',               // Brazilian Portuguese by default
   silenceMs: 1000,              // how long the user must be quiet before their turn ends
@@ -58,6 +64,8 @@ function loadSettings() {
   if ((raw.settingsVersion || 0) < 5) s.silenceMs = 1000; // v5: wait 1 s of silence before replying
   if ((raw.settingsVersion || 0) < 6 && !s.language) s.language = 'pt'; // v6: Brazilian Portuguese by default
   if ((raw.settingsVersion || 0) < 7) s.pushToTalk = true; // v7: push-to-talk, pauses no longer end the turn
+  if (LIVE_DISABLED && s.ttsEngine === 'live') s.ttsEngine = 'realtime';
+  if (LIVE_DISABLED && LIVE_ONLY_VOICES.includes(s.voice)) s.voice = 'marin';
   try { s.openaiKey = fs.readFileSync(keyFile(), 'utf8').trim(); } catch {}
   // One-time migration from the Keychain (safeStorage). Every rebuild of this ad-hoc-signed app
   // looks like a new app to the Keychain, which then asks for the login password again.
@@ -526,6 +534,7 @@ const tts = {
     send('tts', { type: 'start', id, text });
     try {
       if (settings.ttsEngine === 'tts') await speakHttp(text, id, gen);
+      else if (settings.ttsEngine === 'local') await speakLocal(text, id, gen);
       else await realtimeTts.speak(text, id, gen);
     } catch (err) {
       if (gen === this.gen) send('error', err.message);
@@ -543,6 +552,128 @@ const tts = {
     this.busy = false;
   },
 };
+
+// Engine 3: Chatterbox on this Mac (local-tts/server.py; its Python lives in ~/.claude-voice/local-tts).
+// Free. The server streams a sentence at a time, a bit slower than real time on an M1.
+const LOCAL_TTS_DIR = path.join(os.homedir(), '.claude-voice', 'local-tts');
+const VOICES_DIR = path.join(os.homedir(), '.claude-voice', 'voices');
+const localTts = {
+  proc: null,
+  ready: null, // Promise<port>
+
+  start() {
+    if (this.ready) return this.ready;
+    const python = path.join(LOCAL_TTS_DIR, '.venv', 'bin', 'python');
+    const script = path.join(__dirname, '..', 'local-tts', 'server.py').replace('app.asar', 'app.asar.unpacked');
+    if (!fs.existsSync(python)) return Promise.reject(new Error(`Local voice isn't installed (${python} is missing).`));
+    this.ready = new Promise((resolve, reject) => {
+      const proc = require('child_process').spawn(python, [script], { stdio: ['ignore', 'pipe', 'pipe'] });
+      this.proc = proc;
+      let out = '';
+      let err = '';
+      proc.stdout.on('data', (d) => {
+        out += d;
+        const m = out.match(/READY (\d+)/);
+        if (m) resolve(Number(m[1]));
+      });
+      proc.stderr.on('data', (d) => { err = (err + d).slice(-2000); });
+      proc.on('exit', (code) => {
+        if (this.proc !== proc) return;
+        this.proc = null;
+        this.ready = null;
+        reject(new Error(`Local voice stopped (exit ${code}): ${err.trim().split('\n').pop() || 'no output'}`));
+      });
+    });
+    return this.ready;
+  },
+
+  stop() {
+    const proc = this.proc;
+    this.proc = null;
+    this.ready = null;
+    proc?.kill();
+  },
+};
+
+async function speakLocal(text, id, gen) {
+  const port = await localTts.start();
+  httpAbort = new AbortController();
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/speak`, {
+      method: 'POST',
+      signal: httpAbort.signal,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, voice: settings.localVoice || 'default', language: settings.language || 'pt' }),
+    });
+    if (!res.ok) throw new Error(`Local voice: HTTP ${res.status}`);
+    send('tts', { type: 'text', id, delta: text });
+    let carry = null; // PCM16 samples are 2 bytes; chunks may split one
+    for await (const chunk of res.body) {
+      if (gen !== tts.gen) return;
+      let buf = Buffer.from(chunk);
+      if (carry) { buf = Buffer.concat([carry, buf]); carry = null; }
+      if (buf.length % 2) { carry = buf.subarray(buf.length - 1); buf = buf.subarray(0, buf.length - 1); }
+      if (buf.length) send('audio', buf);
+    }
+  } catch (err) {
+    if (err.name !== 'AbortError') throw err;
+  }
+}
+
+// Cloned voices: a short recording of someone talking, saved as ~/.claude-voice/voices/<name>.wav.
+function listVoices() {
+  try { return fs.readdirSync(VOICES_DIR).filter((f) => f.endsWith('.wav')).map((f) => f.slice(0, -4)).sort(); } catch { return []; }
+}
+
+// Chatterbox only looks at the first ~10 s of a voice sample, so make every one of them speech:
+// cut silence at the edges, shorten long pauses, and bring the level up to a consistent peak.
+function cleanVoiceSample(samples) {
+  const FRAME = 480; // 20 ms at 24 kHz
+  const frames = [];
+  let loudest = 0;
+  for (let i = 0; i + FRAME <= samples.length; i += FRAME) {
+    let sum = 0;
+    for (let j = i; j < i + FRAME; j++) sum += samples[j] * samples[j];
+    const rms = Math.sqrt(sum / FRAME);
+    frames.push(rms);
+    if (rms > loudest) loudest = rms;
+  }
+  const voiced = frames.map((rms) => rms > loudest * 0.06); // ~-25 dB below the loudest frame
+  const first = voiced.indexOf(true);
+  const last = voiced.lastIndexOf(true);
+  if (first < 0) return new Int16Array(0);
+  const kept = [];
+  let quiet = 0;
+  for (let f = Math.max(0, first - 5); f <= Math.min(frames.length - 1, last + 10); f++) {
+    quiet = voiced[f] ? 0 : quiet + 1;
+    if (quiet <= 12) kept.push(f); // keep at most ~250 ms of each pause
+  }
+  const out = new Int16Array(kept.length * FRAME);
+  let peak = 1;
+  kept.forEach((f, k) => {
+    out.set(samples.subarray(f * FRAME, f * FRAME + FRAME), k * FRAME);
+  });
+  for (const v of out) peak = Math.max(peak, Math.abs(v));
+  const gain = Math.min((0.89 * 32767) / peak, 8);
+  for (let i = 0; i < out.length; i++) out[i] = Math.round(out[i] * gain);
+  return out;
+}
+
+function saveVoice(name, pcm) {
+  name = String(name || '').replace(/[^\p{L}\p{N} _-]/gu, '').trim().slice(0, 40);
+  if (!name || name === 'default') throw new Error('Give the voice a name.');
+  const clean = cleanVoiceSample(new Int16Array(pcm));
+  if (clean.length < 24000 * 5) throw new Error('Not enough speech: record at least 5 seconds of talking.');
+  const data = Buffer.from(clean.buffer, clean.byteOffset, clean.byteLength);
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0); header.writeUInt32LE(36 + data.length, 4); header.write('WAVE', 8);
+  header.write('fmt ', 12); header.writeUInt32LE(16, 16); header.writeUInt16LE(1, 20); header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(24000, 24); header.writeUInt32LE(48000, 28); header.writeUInt16LE(2, 32); header.writeUInt16LE(16, 34);
+  header.write('data', 36); header.writeUInt32LE(data.length, 40);
+  fs.mkdirSync(VOICES_DIR, { recursive: true });
+  fs.writeFileSync(path.join(VOICES_DIR, `${name}.wav`), Buffer.concat([header, data]));
+  return name;
+}
 
 // Engine 1: a Realtime model used as a voice. Persistent socket, streams audio deltas.
 const realtimeTts = {
@@ -976,6 +1107,8 @@ app.whenReady().then(async () => {
   ipcMain.handle('settings:get', () => settings);
   ipcMain.handle('pair:info', () => pairInfo());
   ipcMain.handle('settings:set', (_e, next) => {
+    if (LIVE_DISABLED && next.ttsEngine === 'live') delete next.ttsEngine;
+    if (LIVE_DISABLED && LIVE_ONLY_VOICES.includes(next.voice)) delete next.voice;
     const voiceChanged = ['voice', 'realtimeModel', 'openaiKey', 'language'].some((k) => next[k] !== undefined && next[k] !== settings[k]);
     const sttChanged = ['sttModel', 'language', 'silenceMs', 'pushToTalk', 'openaiKey', 'ttsEngine', 'liveModel', 'voice'].some((k) => next[k] !== undefined && next[k] !== settings[k]);
     const wasOpen = !!(stt.ws || live.active);
@@ -984,8 +1117,16 @@ app.whenReady().then(async () => {
     saveSettings(settings);
     registerHotkey();
     if (voiceChanged) realtimeTts.reset();
+    if (settings.ttsEngine === 'local') localTts.start().catch((err) => send('error', err.message));
+    else localTts.stop();
     if (sttChanged && wasOpen) input().open();
     return settings;
+  });
+  ipcMain.handle('voices:list', () => listVoices());
+  ipcMain.handle('voices:save', (_e, name, pcm) => saveVoice(name, pcm));
+  ipcMain.handle('voices:delete', (_e, name) => {
+    if (listVoices().includes(name)) fs.rmSync(path.join(VOICES_DIR, `${name}.wav`));
+    return listVoices();
   });
   ipcMain.handle('channel:state', () => ({ url: channelUrl, connected: channel?.readyState === WebSocket.OPEN, activity }));
   ipcMain.on('stt:open', () => input().open());
@@ -1022,6 +1163,7 @@ app.whenReady().then(async () => {
     if (!parseArgs(process.argv).connect) startThread();
     // Warm up the voice socket so the first reply starts instantly.
     if (settings.openaiKey && settings.ttsEngine === 'realtime') realtimeTts.connect().catch(() => {});
+    if (settings.ttsEngine === 'local') localTts.start().catch((err) => send('error', err.message));
     send('engine', settings.ttsEngine);
   });
   // Fires when the app is opened again while running (Dock, `open`, the Ctrl+Option+Cmd+Space helper).
@@ -1039,5 +1181,6 @@ app.on('will-quit', () => {
   stt.close();
   live.close();
   realtimeTts.reset();
+  localTts.stop();
 });
 app.on('window-all-closed', () => app.quit());

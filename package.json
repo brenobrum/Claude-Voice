@@ -19,8 +19,12 @@
     "files": [
       "src/**/*",
       "channel/**/*",
+      "local-tts/server.py",
       "INSTALL-PROMPT.md",
       "package.json"
+    ],
+    "asarUnpack": [
+      "local-tts/**"
     ],
     "afterPack": "build/adhoc-sign.js",
     "mac": {

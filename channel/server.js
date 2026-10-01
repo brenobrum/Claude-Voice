@@ -415,8 +415,37 @@ function setActivity(state, detail = '') {
 
 const toolName = (name) => String(name || 'tool').replace(/^mcp__(.+?)__/, '$1 · ');
 
+// Cancel from the voice app: the next hook of the main thread answers `continue: false`, which stops the turn
+// (and a PreToolUse also denies the tool, so it doesn't run). Text being generated stops at the next hook.
+let cancelRequested = false;
+function cancelTurn() {
+  if (activity.state === 'idle') return false;
+  cancelRequested = true;
+  setActivity('idle');
+  return true;
+}
+
+// The hook's reply to Claude Code (null = no opinion).
+function hookReply(ev) {
+  if (!cancelRequested || ev.agent_id) return null;
+  if (['UserPromptSubmit', 'Stop', 'StopFailure', 'SessionEnd'].includes(ev.hook_event_name)) {
+    cancelRequested = false;
+    return null;
+  }
+  if (!['PreToolUse', 'PostToolUse', 'PostToolUseFailure'].includes(ev.hook_event_name)) return null;
+  cancelRequested = false;
+  const reason = 'The user cancelled this from the voice app.';
+  return {
+    continue: false, stopReason: reason,
+    ...(ev.hook_event_name === 'PreToolUse'
+      ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }
+      : {}),
+  };
+}
+
 function onHook(ev) {
   hooksSeen = true;
+  if (cancelRequested && !ev.agent_id) return; // stay idle until the cancel lands
   const sub = ev.agent_id && subagents.get(ev.agent_id);
   // A subagent's tools while the main turn is over (or tagged with its id) are background work.
   const background = sub || (activity.state === 'idle' && subagents.size > 0);
@@ -739,8 +768,12 @@ async function main() {
     let body = '';
     req.on('data', (d) => { body += d; if (body.length > 1e6) req.destroy(); });
     req.on('end', () => {
-      res.writeHead(204).end();
-      try { onHook(JSON.parse(body)); } catch {}
+      let ev = null;
+      try { ev = JSON.parse(body); } catch {}
+      const reply = ev && hookReply(ev);
+      if (reply) res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(reply));
+      else res.writeHead(204).end();
+      if (ev) try { onHook(ev); } catch {}
     });
   });
   const wss = new WebSocketServer({ server });
@@ -809,6 +842,8 @@ async function main() {
           method: 'notifications/claude/channel/permission',
           params: { request_id: msg.request_id, behavior: msg.behavior === 'allow' ? 'allow' : 'deny' },
         });
+      } else if (msg.type === 'cancel') {
+        cancelTurn();
       } else if (msg.type === 'agent_stop') {
         stopAgent(agents.get(msg.id));
       } else if (msg.type === 'agent_spawn' && msg.task?.trim()) {

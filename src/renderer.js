@@ -42,6 +42,7 @@ function showEmpty() {
 function refreshStatus() {
   document.body.classList.toggle('listening', listening);
   document.body.classList.toggle('speaking', player.speaking);
+  document.body.classList.toggle('busy', waitingForClaude);
   $('dot').className = `dot ${connected ? 'on' : ''}`;
   let s;
   if (!connected) s = 'Not connected — run /voice in a claude-voice terminal';
@@ -294,8 +295,9 @@ let starting = false;
 async function startListening() {
   if (listening || starting) return;
   if (!settings.openaiKey) { openSettings(); return; }
+  // Opening the mic always cuts Claude off.
+  if (player.speaking || ttsActive) interrupt();
   if (pushToTalk()) {
-    if (player.speaking || ttsActive) interrupt();
     window.api.sttOpen();
     window.api.sttClear();
     recordedFrames = 0;
@@ -611,10 +613,30 @@ window.api.onError((msg) => addNote(msg, 'error'));
 
 const form = $('settingsForm');
 
+async function fillLocalVoices(selected) {
+  const sel = $('localVoice');
+  sel.innerHTML = '';
+  sel.add(new Option('Default (built in)', 'default'));
+  for (const name of await window.api.listVoices()) sel.add(new Option(name, name));
+  sel.value = [...sel.options].some((o) => o.value === selected) ? selected : 'default';
+  syncSettingsForm();
+}
+
+// Show only what applies to the chosen engine.
+function syncSettingsForm() {
+  const engine = form.elements.ttsEngine.value;
+  form.querySelector('.when-local').hidden = engine !== 'local';
+  form.querySelector('.when-openai').hidden = engine === 'local';
+  form.querySelector('.when-handsfree').hidden = form.elements.pushToTalk.checked;
+  $('deleteVoice').hidden = $('localVoice').value === 'default';
+}
+form.addEventListener('change', syncSettingsForm);
+
 function openSettings() {
   for (const el of form.elements) {
     if (!el.name) continue;
     if (el.type === 'checkbox') el.checked = !!settings[el.name];
+    else if (el.type === 'radio') el.checked = el.value === settings[el.name];
     else {
       // Keep a saved model that isn't in the dropdown's list selectable.
       const v = settings[el.name] ?? '';
@@ -622,6 +644,7 @@ function openSettings() {
       el.value = v;
     }
   }
+  fillLocalVoices(settings.localVoice);
   $('settings').showModal();
   reportUi();
 }
@@ -629,7 +652,7 @@ function openSettings() {
 function readForm() {
   const next = {};
   for (const el of form.elements) {
-    if (!el.name) continue;
+    if (!el.name || (el.type === 'radio' && !el.checked)) continue;
     next[el.name] = el.type === 'checkbox' ? el.checked : el.type === 'number' ? Number(el.value) : el.value.trim();
   }
   return next;
@@ -639,6 +662,104 @@ $('testVoice').onclick = async () => {
   settings = await window.api.setSettings(readForm());
   window.api.ttsTest();
 };
+
+$('deleteVoice').onclick = async () => {
+  const name = $('localVoice').value;
+  if (name === 'default' || !confirm(`Delete the voice "${name}"?`)) return;
+  await window.api.deleteVoice(name);
+  fillLocalVoices('default');
+};
+
+// ---------- voice cloning ----------
+
+const clone = { stream: null, ctx: null, frames: [], timer: null, started: 0, pcm: null };
+
+function cloneSamples() { return clone.frames.reduce((n, f) => n + f.length, 0); }
+
+async function startRecording() {
+  try {
+    // Raw mic: noise suppression and auto gain change the timbre the clone learns from.
+    clone.stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+  } catch (err) {
+    $('cloneMsg').textContent = `Microphone unavailable: ${err.message}`;
+    return;
+  }
+  clone.ctx = new AudioContext({ sampleRate: 24000 });
+  await clone.ctx.audioWorklet.addModule('mic-worklet.js');
+  const node = new AudioWorkletNode(clone.ctx, 'mic-processor');
+  node.port.onmessage = ({ data }) => clone.frames.push(new Int16Array(data.pcm));
+  clone.ctx.createMediaStreamSource(clone.stream).connect(node);
+  clone.frames = [];
+  clone.pcm = null;
+  clone.started = Date.now();
+  $('recBtn').textContent = '■ Stop';
+  $('recBtn').classList.add('on');
+  $('cloneMsg').textContent = '';
+  clone.timer = setInterval(() => {
+    const secs = (Date.now() - clone.started) / 1000;
+    $('recTime').textContent = `${secs.toFixed(1)} s`;
+    if (secs >= 30) stopRecording();
+  }, 100);
+}
+
+function stopRecording() {
+  clearInterval(clone.timer);
+  clone.stream?.getTracks().forEach((t) => t.stop());
+  clone.ctx?.close();
+  clone.stream = null;
+  clone.ctx = null;
+  $('recBtn').textContent = '● Record again';
+  $('recBtn').classList.remove('on');
+  const pcm = new Int16Array(cloneSamples());
+  let o = 0;
+  for (const f of clone.frames) { pcm.set(f, o); o += f.length; }
+  clone.pcm = pcm;
+  const secs = pcm.length / 24000;
+  $('playRec').disabled = !pcm.length;
+  $('saveClone').disabled = secs < 8;
+  $('cloneMsg').textContent = secs < 8 ? 'Too short: record at least 10 seconds.' : 'Sounds good? Give it a name and save. Silences are trimmed automatically.';
+}
+
+$('recBtn').onclick = () => (clone.stream ? stopRecording() : startRecording());
+
+$('playRec').onclick = () => {
+  if (!clone.pcm) return;
+  const ctx = new AudioContext({ sampleRate: 24000 });
+  const buf = ctx.createBuffer(1, clone.pcm.length, 24000);
+  const ch = buf.getChannelData(0);
+  for (let i = 0; i < clone.pcm.length; i++) ch[i] = clone.pcm[i] / 0x8000;
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.connect(ctx.destination);
+  src.onended = () => ctx.close();
+  src.start();
+};
+
+$('saveClone').onclick = async () => {
+  try {
+    const name = await window.api.saveVoice($('cloneName').value || 'My voice', clone.pcm.buffer);
+    $('cloneDialog').close();
+    // Pick the new voice on the local engine right away.
+    form.elements.ttsEngine.value = 'local';
+    await fillLocalVoices(name);
+  } catch (err) {
+    $('cloneMsg').textContent = err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+  }
+};
+
+$('cloneBtn').onclick = () => {
+  clone.frames = [];
+  clone.pcm = null;
+  $('recTime').textContent = '0.0 s';
+  $('recBtn').textContent = '● Record';
+  $('playRec').disabled = true;
+  $('saveClone').disabled = true;
+  $('cloneName').value = '';
+  $('cloneMsg').textContent = '';
+  $('cloneDialog').showModal();
+};
+
+$('cloneDialog').addEventListener('close', () => { if (clone.stream) stopRecording(); });
 
 $('settings').addEventListener('close', async () => {
   reportUi();
@@ -699,9 +820,13 @@ function renderMode() {
   $('modeBtn').title = MODE_TITLES[live ? 'live' : 'realtime'];
 }
 
+// GPT-Live is blocked for now (see LIVE_DISABLED in main.js): the mode button stays hidden.
+const LIVE_DISABLED = true;
+if (LIVE_DISABLED) $('modeBtn').hidden = true;
+
 let switchingMode = false;
 async function toggleMode() {
-  if (switchingMode) return;
+  if (switchingMode || (LIVE_DISABLED && settings.ttsEngine !== 'live')) return;
   switchingMode = true;
   try {
     // The two engines use different mic pipelines (transcription socket vs WebRTC), so reopen the mic.
@@ -721,6 +846,19 @@ function toggleMic() { listening ? stopListening() : startListening(); }
 
 $('orb').onclick = toggleMic;
 $('micBtn').onclick = () => { $('micBtn').blur(); toggleMic(); };
+// X: drop the recording, stop talking and stop whatever Claude is doing.
+function cancelAll() {
+  if (listening) stopListening(false);
+  interrupt();
+  if (waitingForClaude) window.api.send({ type: 'cancel' });
+  waitingForClaude = false;
+  refreshStatus();
+}
+$('cancelBtn').onclick = (e) => {
+  e.stopPropagation();
+  $('cancelBtn').blur();
+  cancelAll();
+};
 $('settingsBtn').onclick = () => { $('settingsBtn').blur(); openSettings(); };
 $('agentsBtn').onclick = () => { $('agentsBtn').blur(); window.api.agentsToggle(); };
 
@@ -762,10 +900,27 @@ window.api.historySummary().then(renderHistorySummary);
 window.api.agentsSummary().then(renderAgentsSummary);
 window.api.onHotkey(primaryAction);
 
+// Space: tap toggles the mic; holding it works as push-to-talk and sends on release.
+let spaceDownAt = 0;
+let openedThisPress = false;
+const HOLD_MS = 300;
 document.addEventListener('keydown', (e) => {
   if ($('settings').open || $('pairDialog').open || e.target === $('contextInput')) return;
-  if (e.code === 'Space' && !e.repeat && !e.altKey && !e.metaKey && !e.ctrlKey) { e.preventDefault(); toggleMic(); }
-  else if (e.key === 'Escape') { if (pushToTalk() && listening) stopListening(false); else stopSpeaking(); }
+  if (e.code === 'Space' && !e.repeat && !e.altKey && !e.metaKey && !e.ctrlKey) {
+    e.preventDefault();
+    spaceDownAt = performance.now();
+    if (listening) { openedThisPress = false; stopListening(true); }
+    else { openedThisPress = true; startListening(); }
+  } else if (e.key === 'Escape') {
+    if (listening) stopListening(false); else stopSpeaking();
+  }
+});
+document.addEventListener('keyup', (e) => {
+  if (e.code !== 'Space') return;
+  const held = spaceDownAt ? performance.now() - spaceDownAt : 0;
+  spaceDownAt = 0;
+  if (openedThisPress && held >= HOLD_MS && listening) stopListening(true);
+  openedThisPress = false;
 });
 
 (async () => {

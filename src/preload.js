@@ -5,6 +5,9 @@ const on = (channel) => (fn) => ipcRenderer.on(channel, (_e, payload) => fn(payl
 contextBridge.exposeInMainWorld('api', {
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSettings: (s) => ipcRenderer.invoke('settings:set', s),
+  listVoices: () => ipcRenderer.invoke('voices:list'),
+  saveVoice: (name, pcm) => ipcRenderer.invoke('voices:save', name, pcm),
+  deleteVoice: (name) => ipcRenderer.invoke('voices:delete', name),
   channelState: () => ipcRenderer.invoke('channel:state'),
   sttOpen: () => ipcRenderer.send('stt:open'),
   sttClose: () => ipcRenderer.send('stt:close'),
