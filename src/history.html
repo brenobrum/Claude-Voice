@@ -20,8 +20,10 @@
     </span>
   </header>
   <main id="log">
-    <div class="empty" id="empty">No messages yet.<br>What you send and what Claude answers shows up here.</div>
+    <div class="empty" id="empty">No messages in this thread yet.<br>What you send and what Claude answers shows up here.</div>
   </main>
+  <div id="activity" class="activity" role="status" aria-live="polite" hidden></div>
+  <script src="activity.js"></script>
   <script src="history.js"></script>
 </body>
 </html>

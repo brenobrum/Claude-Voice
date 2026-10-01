@@ -154,8 +154,7 @@ final class AudioIO {
             meter.micHigh = min(1, Float(crossings) / Float(n) * 6)
         }
         while pending.count >= Self.frameSamples {
-            let frame = pending.prefix(Self.frameSamples)
-            let data = frame.withContiguousStorageIfAvailable { Data(buffer: $0) } ?? Data(buffer: UnsafeBufferPointer(start: Array(frame), count: frame.count))
+            let data = pending.withUnsafeBufferPointer { Data(buffer: UnsafeBufferPointer(rebasing: $0[0..<Self.frameSamples])) }
             pending.removeFirst(Self.frameSamples)
             let peak = pendingPeak
             pendingPeak = 0

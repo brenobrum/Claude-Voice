@@ -17,3 +17,30 @@ body.history .title { position: static; transform: none; color: var(--text); fon
 .m.permission { font-size: 11.5px; color: var(--muted); border-style: dashed; background: transparent; }
 .m .meta { display: block; margin-top: 3px; font-size: 10px; color: var(--muted); }
 .m.sent .meta { text-align: right; }
+
+/* Sent and still being processed by Claude: shimmering border + typing dots. */
+.m .dots { display: none; }
+.m.pending { position: relative; overflow: hidden; animation: fade-in .2s ease, pending-pulse 1.6s ease-in-out infinite; }
+.m.pending::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(100deg, transparent 30%, rgba(232,121,74,.16) 50%, transparent 70%);
+  background-size: 250% 100%; animation: pending-shimmer 1.8s linear infinite;
+}
+.m.pending .dots { display: inline-flex; gap: 3px; margin-right: 6px; vertical-align: middle; }
+.m.pending .dots i { width: 4px; height: 4px; border-radius: 50%; background: #e8794a; animation: pending-dot 1.2s ease-in-out infinite; }
+.m.pending .dots i:nth-child(2) { animation-delay: .15s; }
+.m.pending .dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes pending-pulse { 50% { border-color: rgba(232,121,74,.75); } }
+@keyframes pending-shimmer { from { background-position: 150% 0; } to { background-position: -100% 0; } }
+@keyframes pending-dot { 0%, 80%, 100% { opacity: .25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }
+@media (prefers-reduced-motion: reduce) { .m.pending, .m.pending::after, .m.pending .dots i { animation: none; } }
+
+#log::-webkit-scrollbar { width: 8px; background: transparent; }
+#log::-webkit-scrollbar-track { background: transparent; }
+#log::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); border-radius: 999px; border: 2px solid transparent; background-clip: content-box; }
+#log::-webkit-scrollbar-thumb:hover { background-color: rgba(255,255,255,.22); }
+#log::-webkit-scrollbar-corner { background: transparent; }
+
+/* Live activity under the messages: what Claude is doing right now. */
+body.history .activity { flex: none; max-width: none; align-items: flex-start; padding: 8px 12px 10px; border-top: 1px solid var(--border); }
+body.history .act-row { max-width: 100%; }

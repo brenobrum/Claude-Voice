@@ -1,9 +1,12 @@
 #!/bin/sh
 # Start Claude Code with the Claude Voice channel enabled. Then type /voice to talk.
-#   claude-voice pair   pair the iPhone app with this Mac (see bin/pair.js)
-if [ "$1" = "pair" ]; then
+#   claude-voice pair    pair the iPhone app with this Mac (see bin/pair.js)
+#   claude-voice hooks   install the hooks that show Claude's activity in the apps (see bin/hooks.js)
+#   claude-voice shortcut  make Ctrl+Option+Cmd+Space open the app from anywhere (see bin/shortcut.js)
+if [ "$1" = "pair" ] || [ "$1" = "hooks" ] || [ "$1" = "shortcut" ]; then
+  cmd=$1
   shift
   DIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
-  exec node "$DIR/pair.js" "$@"
+  exec node "$DIR/$cmd.js" "$@"
 fi
 exec claude --dangerously-load-development-channels server:voice "$@"

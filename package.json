@@ -19,6 +19,7 @@
     "files": [
       "src/**/*",
       "channel/**/*",
+      "INSTALL-PROMPT.md",
       "package.json"
     ],
     "afterPack": "build/adhoc-sign.js",
@@ -30,7 +31,8 @@
         "dmg"
       ],
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "Claude Voice listens to you so your speech can be transcribed and sent to your Claude Code session."
+        "NSMicrophoneUsageDescription": "Claude Voice listens to you so your speech can be transcribed and sent to your Claude Code session.",
+        "NSAppleEventsUsageDescription": "Claude Voice opens Terminal to start a Claude Code session when there isn't one to talk to."
       },
       "icon": "build/icon.icns"
     },

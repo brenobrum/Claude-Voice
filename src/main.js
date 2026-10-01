@@ -1,9 +1,14 @@
 const { app, BrowserWindow, ipcMain, globalShortcut, safeStorage, systemPreferences, screen } = require('electron');
 const fs = require('fs');
+const crypto = require('crypto');
 const path = require('path');
 const WebSocket = require('ws');
+const os = require('os');
+const { execFile, execFileSync } = require('child_process');
+const QRCode = require('qrcode-terminal/vendor/QRCode');
+const QRErrorCorrectLevel = require('qrcode-terminal/vendor/QRCode/QRErrorCorrectLevel');
 
-const SETTINGS_VERSION = 6;
+const SETTINGS_VERSION = 7;
 
 const DEFAULTS = {
   openaiKey: '',
@@ -19,7 +24,9 @@ const DEFAULTS = {
   language: 'pt',               // Brazilian Portuguese by default
   silenceMs: 1000,              // how long the user must be quiet before their turn ends
   bargeIn: true,                 // keep listening while speaking so the user can interrupt
+  pushToTalk: true,              // Space starts recording, Space again sends (no silence detection)
   hotkey: 'Alt+Space',
+  lastCwd: '',                  // where the last thread ran; a thread the app starts on its own opens here
 };
 
 const TTS_STYLE = 'Warm, relaxed and natural, like a friendly colleague talking. Brisk pace.';
@@ -50,6 +57,7 @@ function loadSettings() {
   }
   if ((raw.settingsVersion || 0) < 5) s.silenceMs = 1000; // v5: wait 1 s of silence before replying
   if ((raw.settingsVersion || 0) < 6 && !s.language) s.language = 'pt'; // v6: Brazilian Portuguese by default
+  if ((raw.settingsVersion || 0) < 7) s.pushToTalk = true; // v7: push-to-talk, pauses no longer end the turn
   try { s.openaiKey = fs.readFileSync(keyFile(), 'utf8').trim(); } catch {}
   // One-time migration from the Keychain (safeStorage). Every rebuild of this ad-hoc-signed app
   // looks like a new app to the Keychain, which then asks for the login password again.
@@ -135,7 +143,7 @@ function createAgentsWindow() {
   });
   agentsWin.loadFile(path.join(__dirname, 'agents.html'));
   agentsWin.webContents.once('did-finish-load', () => sendAgents('agents:all', [...agentsList.values()]));
-  agentsWin.on('closed', () => { agentsWin = null; send('agents:summary', agentsSummary()); });
+  agentsWin.on('closed', () => { agentsWin = null; send('agents:summary', agentsSummary()); pushUi(); });
 }
 
 function showAgents(show) {
@@ -146,6 +154,7 @@ function showAgents(show) {
     agentsWin.showInactive();
   } else agentsWin?.hide();
   send('agents:summary', agentsSummary());
+  pushUi();
 }
 
 function onAgentMessage(msg) {
@@ -164,13 +173,15 @@ function onAgentMessage(msg) {
     sendAgents('agents:log', { id: msg.id, line: msg.line });
   }
   send('agents:summary', agentsSummary());
+  pushUi();
 }
 
 // ---------- message history panel (docked to the left of the main window) ----------
 
 let historyWin = null;
 let historyWanted = false;
-let history = []; // { dir: 'sent' | 'received', kind: 'message' | 'permission', text, at }
+let history = []; // { dir: 'sent' | 'received', kind: 'message' | 'permission', text, at, thread }
+let currentThread = null; // id of the attached Claude Code thread; the panel only shows its messages
 
 const HISTORY_WIDTH = 320;
 const HISTORY_MAX = 500;
@@ -178,6 +189,8 @@ const historyFile = () => path.join(app.getPath('userData'), 'history.json');
 
 function loadHistory() {
   try { history = JSON.parse(fs.readFileSync(historyFile(), 'utf8')).slice(-HISTORY_MAX); } catch { history = []; }
+  for (const e of history) delete e.pending; // nothing is in flight after a restart
+  currentThread = history.findLast((e) => e.thread)?.thread || null; // show the last thread until one connects
 }
 
 let historySaveTimer = null;
@@ -193,25 +206,61 @@ function sendHistory(channel, payload) {
   if (historyWin && !historyWin.isDestroyed()) historyWin.webContents.send(channel, payload);
 }
 
+// A thread is the project the Claude session runs in (its cwd from `hello`). The channel URL can't be
+// used: every session gets a random port and token, so each /voice would start an empty thread.
+// Entries saved before threads existed have no `thread` and show in every thread.
+const threadId = (cwd) => (cwd ? crypto.createHash('sha1').update(cwd).digest('hex').slice(0, 12) : null);
+const inThread = (e) => !e.thread || e.thread === currentThread;
+const threadHistory = () => history.filter(inThread);
+
 function historySummary() {
-  return { count: history.length, open: !!historyWin?.isVisible() };
+  return { count: threadHistory().length, open: !!historyWin?.isVisible() };
+}
+
+function setThread(cwd) {
+  if (cwd && cwd !== settings.lastCwd) { settings.lastCwd = cwd; saveSettings(settings); }
+  const id = threadId(cwd);
+  if (!id || id === currentThread) return;
+  currentThread = id;
+  sendHistory('history:all', threadHistory());
+  send('history:summary', historySummary());
+}
+
+// What the Claude thread is doing (channel/server.js `activity`): shown under the orb and in the history.
+const IDLE = { state: 'idle', detail: '', background: [] };
+let activity = IDLE;
+
+function setActivity(a) {
+  activity = a || IDLE;
+  send('activity', activity);
+  sendHistory('history:activity', activity);
+  if (activity.state === 'idle') settlePending();
+}
+
+// Sent messages stay `pending` (shown as processing) until the thread goes idle or drops.
+function settlePending() {
+  let changed = false;
+  for (const e of history) if (e.pending) { delete e.pending; changed = true; }
+  if (changed) { saveHistory(); sendHistory('history:settled'); }
 }
 
 function addHistory(dir, text, kind = 'message') {
   text = String(text || '').trim();
   if (!text) return;
-  const entry = { dir, kind, text, at: Date.now() };
+  const entry = { dir, kind, text, at: Date.now(), thread: currentThread };
+  if (dir === 'sent' && kind === 'message') entry.pending = true;
   history.push(entry);
   if (history.length > HISTORY_MAX) history.shift();
   saveHistory();
   sendHistory('history:add', entry);
   send('history:summary', historySummary());
+  pushUi();
 }
 
 function clearHistory() {
-  history = [];
+  history = history.filter((e) => !inThread(e));
   saveHistory(true);
-  sendHistory('history:all', history);
+  sendHistory('history:all', threadHistory());
   send('history:summary', historySummary());
 }
 
@@ -229,8 +278,11 @@ function createHistoryWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true },
   });
   historyWin.loadFile(path.join(__dirname, 'history.html'));
-  historyWin.webContents.once('did-finish-load', () => sendHistory('history:all', history));
-  historyWin.on('closed', () => { historyWin = null; send('history:summary', historySummary()); });
+  historyWin.webContents.once('did-finish-load', () => {
+    sendHistory('history:all', threadHistory());
+    sendHistory('history:activity', activity);
+  });
+  historyWin.on('closed', () => { historyWin = null; send('history:summary', historySummary()); pushUi(); });
 }
 
 function showHistory(show) {
@@ -241,6 +293,7 @@ function showHistory(show) {
     historyWin.showInactive();
   } else historyWin?.hide();
   send('history:summary', historySummary());
+  pushUi();
 }
 
 function openaiWs(query) {
@@ -277,13 +330,22 @@ function connectChannel(url) {
   if (channel) { channel.removeAllListeners(); channel.close(); channel = null; }
   channelUrl = url;
   if (!url) return;
-  const ws = new WebSocket(url);
+  let ws;
+  try { ws = new WebSocket(url); } catch (err) {
+    send('channel', { state: 'error', error: err.message });
+    return;
+  }
   channel = ws;
   send('channel', { state: 'connecting' });
   ws.on('message', (raw) => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
-    if (msg.type === 'hello') send('channel', { state: 'connected', cwd: msg.cwd, project: msg.project });
+    if (msg.type === 'hello') {
+      setThread(msg.cwd);
+      send('channel', { state: 'connected', cwd: msg.cwd, project: msg.project });
+      pushUi(true);
+    }
+    else if (msg.type === 'ui_action') uiAction(String(msg.action || ''));
     else if (msg.type === 'speak') {
       addHistory('received', msg.text);
       if (settings.ttsEngine === 'live') live.relay(msg.text);
@@ -294,9 +356,53 @@ function connectChannel(url) {
       send('permission', msg);
     }
     else if (msg.type === 'agents' || msg.type === 'agent' || msg.type === 'agent_log') onAgentMessage(msg);
+    else if (msg.type === 'activity') setActivity(msg.activity);
   });
-  ws.on('close', () => { if (channel === ws) { channel = null; send('channel', { state: 'disconnected' }); } });
+  ws.on('close', () => { if (channel === ws) { channel = null; setActivity(IDLE); send('channel', { state: 'disconnected' }); } });
   ws.on('error', () => {});
+}
+
+// ---------- app state for Claude (channel/server.js app_state / app_control) ----------
+
+let rendererUi = {}; // what the main window reports: mic, speaking, mode, open dialogs
+let uiSent = '';
+
+function uiState() {
+  const agents = agentsSummary();
+  return {
+    window: !win || win.isDestroyed() ? 'closed' : win.isMinimized() ? 'minimized' : win.isFocused() ? 'focused' : 'open',
+    history_panel: historyWin?.isVisible() ? 'open' : 'closed',
+    history_messages: threadHistory().length,
+    agents_panel: agents.open ? 'open' : 'closed',
+    agents_running: agents.running,
+    agents_total: agents.total,
+    mic: rendererUi.mic ? 'on' : 'off',
+    speaking: !!rendererUi.speaking,
+    mode: rendererUi.mode || settings.ttsEngine,
+    settings_dialog: rendererUi.settingsOpen ? 'open' : 'closed',
+    pairing_dialog: rendererUi.pairingOpen ? 'open' : 'closed',
+    typed_context_box: rendererUi.typedContextOpen ? 'open' : 'closed',
+  };
+}
+
+// Tell the channel whenever the UI changes, so Claude knows what the user is looking at.
+function pushUi(force = false) {
+  if (!channel || channel.readyState !== WebSocket.OPEN) return;
+  const json = JSON.stringify(uiState());
+  if (!force && json === uiSent) return;
+  uiSent = json;
+  channel.send(JSON.stringify({ type: 'ui_state', state: JSON.parse(json) }));
+}
+
+function uiAction(action) {
+  if (action === 'open_history') showHistory(true);
+  else if (action === 'close_history') showHistory(false);
+  else if (action === 'open_agents') showAgents(true);
+  else if (action === 'close_agents') showAgents(false);
+  else if (action === 'show_window') { if (win?.isMinimized()) win.restore(); win?.show(); }
+  else if (action === 'minimize_window') win?.minimize();
+  else send('ui:action', action);
+  pushUi();
 }
 
 // Typed context from the app's text box; rides along with the next spoken message.
@@ -319,6 +425,7 @@ function toChannel(msg) {
 
 const stt = {
   ws: null,
+  pending: [], // messages sent while the socket is still connecting
   open() {
     if (this.ws) return;
     if (!settings.openaiKey) { send('error', 'Add your OpenAI API key in Settings.'); send('stt', { type: 'closed' }); return; }
@@ -337,7 +444,8 @@ const stt = {
               format: { type: 'audio/pcm', rate: 24000 },
               noise_reduction: { type: 'near_field' },
               transcription,
-              turn_detection: {
+              // Push-to-talk: the renderer commits the buffer when the user presses Space again.
+              turn_detection: settings.pushToTalk ? null : {
                 type: 'server_vad',
                 threshold: 0.5,
                 prefix_padding_ms: 300,
@@ -347,12 +455,15 @@ const stt = {
           },
         },
       }));
+      for (const m of this.pending) ws.send(m);
+      this.pending = [];
       send('stt', { type: 'open' });
     });
     ws.on('message', (raw) => {
       let ev;
       try { ev = JSON.parse(raw); } catch { return; }
       switch (ev.type) {
+        case 'input_audio_buffer.committed': send('stt', { type: 'committed', id: ev.item_id }); break;
         case 'input_audio_buffer.speech_started': send('stt', { type: 'speech_started', id: ev.item_id }); break;
         case 'input_audio_buffer.speech_stopped': send('stt', { type: 'speech_stopped', id: ev.item_id }); break;
         case 'conversation.item.input_audio_transcription.delta': send('stt', { type: 'delta', id: ev.item_id, text: ev.delta }); break;
@@ -371,20 +482,21 @@ const stt = {
   close() {
     const ws = this.ws;
     this.ws = null;
+    this.pending = [];
     if (!ws) return;
     ws.removeAllListeners();
     ws.on('error', () => {});
     if (ws.readyState === WebSocket.CONNECTING) ws.terminate();
     else ws.close(1000);
   },
-  append(pcm) {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: 'input_audio_buffer.append', audio: Buffer.from(pcm).toString('base64') }));
-    }
+  post(msg) {
+    const m = JSON.stringify(msg);
+    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(m);
+    else if (this.ws?.readyState === WebSocket.CONNECTING) this.pending.push(m);
   },
-  clear() {
-    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'input_audio_buffer.clear' }));
-  },
+  append(pcm) { this.post({ type: 'input_audio_buffer.append', audio: Buffer.from(pcm).toString('base64') }); },
+  clear() { this.post({ type: 'input_audio_buffer.clear' }); },
+  commit() { this.post({ type: 'input_audio_buffer.commit' }); },
 };
 
 // ---------- text-to-speech ----------
@@ -732,11 +844,50 @@ const live = {
 // Route mic/session control to whichever engine is active.
 const input = () => (settings.ttsEngine === 'live' ? live : stt);
 
+// ---------- iPhone pairing (same token file as `claude-voice pair`) ----------
+
+const REMOTE_FILE = path.join(os.homedir(), '.claude-voice', 'remote.json');
+
+function pairInfo() {
+  let cfg = {};
+  try { cfg = JSON.parse(fs.readFileSync(REMOTE_FILE, 'utf8')); } catch {}
+  const created = !cfg.token;
+  if (created) {
+    cfg.token = crypto.randomBytes(24).toString('hex');
+    fs.mkdirSync(path.dirname(REMOTE_FILE), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(REMOTE_FILE, JSON.stringify(cfg, null, 2), { mode: 0o600 });
+  }
+  const scutil = (k) => { try { return execFileSync('scutil', ['--get', k], { encoding: 'utf8' }).trim(); } catch { return ''; } };
+  const host = `${scutil('LocalHostName') || os.hostname().replace(/\.local$/, '')}.local`;
+  const name = scutil('ComputerName') || host;
+  const url = `claudevoice://pair?token=${cfg.token}&host=${encodeURIComponent(host)}&name=${encodeURIComponent(name)}`;
+  return { url, host, token: cfg.token, created, svg: qrSvg(url) };
+}
+
+// QR code as a crisp SVG: one path of unit squares, with a 4-module quiet zone.
+function qrSvg(text) {
+  const qr = new QRCode(-1, QRErrorCorrectLevel.M);
+  qr.addData(text);
+  qr.make();
+  const n = qr.getModuleCount();
+  let d = '';
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) d += `M${c + 4} ${r + 4}h1v1h-1z`;
+  const size = n + 8;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges">`
+    + `<rect width="${size}" height="${size}" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
+}
+
 // ---------- app ----------
 
+// Chromium reorders a second instance's argv (switches first, values after), so
+// `--connect <url>` can arrive as `--connect --cwd <url> ...`. Prefer `--connect=<url>`
+// and only accept a value that is actually a ws:// URL.
 function parseArgs(argv) {
-  const get = (flag) => { const i = argv.indexOf(flag); return i !== -1 ? argv[i + 1] : null; };
-  return { connect: get('--connect') };
+  const isWs = (v) => typeof v === 'string' && /^wss?:\/\//.test(v);
+  const eq = argv.find((a) => a.startsWith('--connect='));
+  if (eq && isWs(eq.slice('--connect='.length))) return { connect: eq.slice('--connect='.length) };
+  if (!argv.includes('--connect')) return { connect: null };
+  return { connect: argv.find(isWs) || null };
 }
 
 function handleArgs(argv) {
@@ -747,6 +898,29 @@ function handleArgs(argv) {
     win.show();
     win.focus();
   }
+}
+
+// Opened on its own (Dock, Ctrl+Option+Cmd+Space) with no thread: start one in Terminal, in the folder of
+// the last thread. Its /voice opens the app again with --connect, which lands in handleArgs.
+// Opening a .command file with Terminal goes through Launch Services, so unlike AppleScript it needs no
+// Automation permission (no prompt, and nothing to re-grant after each ad-hoc-signed rebuild).
+function startThread() {
+  const dir = settings.lastCwd && fs.existsSync(settings.lastCwd) ? settings.lastCwd : os.homedir();
+  const sh = (v) => `'${v.replace(/'/g, `'\\''`)}'`;
+  const file = path.join(os.tmpdir(), 'claude-voice', `thread-${Date.now()}.command`);
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    // A login shell, so claude is on PATH. The prompt goes first: the channels flag is variadic and would swallow it.
+    fs.writeFileSync(file, `#!/bin/zsh -l\nrm -f -- "$0"\ncd ${sh(dir)} && claude /voice --dangerously-load-development-channels server:voice\n`,
+      { mode: 0o700 });
+  } catch (err) {
+    send('error', `Couldn't start a Claude Code thread: ${err.message}`);
+    return;
+  }
+  send('channel', { state: 'starting', cwd: dir });
+  execFile('open', ['-a', 'Terminal', file], (err, _out, stderr) => {
+    if (err) send('error', `Couldn't start a Claude Code thread in Terminal: ${String(stderr || err.message).trim()}`);
+  });
 }
 
 function registerHotkey() {
@@ -773,11 +947,14 @@ function createWindow() {
   win.loadFile(path.join(__dirname, 'index.html'));
   win.on('move', dockPanels);
   win.on('resize', dockPanels);
-  win.on('minimize', () => { agentsWin?.hide(); historyWin?.hide(); });
+  win.on('minimize', () => { agentsWin?.hide(); historyWin?.hide(); pushUi(); });
   win.on('restore', () => {
     if (agentsWanted) showAgents(true);
     if (historyWanted) showHistory(true);
+    pushUi();
   });
+  win.on('focus', () => pushUi());
+  win.on('blur', () => pushUi());
   win.on('closed', () => { agentsWin?.destroy(); historyWin?.destroy(); });
 }
 
@@ -797,9 +974,10 @@ app.whenReady().then(async () => {
   if (process.platform === 'darwin') systemPreferences.askForMediaAccess('microphone').catch(() => {});
 
   ipcMain.handle('settings:get', () => settings);
+  ipcMain.handle('pair:info', () => pairInfo());
   ipcMain.handle('settings:set', (_e, next) => {
     const voiceChanged = ['voice', 'realtimeModel', 'openaiKey', 'language'].some((k) => next[k] !== undefined && next[k] !== settings[k]);
-    const sttChanged = ['sttModel', 'language', 'silenceMs', 'openaiKey', 'ttsEngine', 'liveModel', 'voice'].some((k) => next[k] !== undefined && next[k] !== settings[k]);
+    const sttChanged = ['sttModel', 'language', 'silenceMs', 'pushToTalk', 'openaiKey', 'ttsEngine', 'liveModel', 'voice'].some((k) => next[k] !== undefined && next[k] !== settings[k]);
     const wasOpen = !!(stt.ws || live.active);
     if (sttChanged) { stt.close(); live.close(); }
     settings = { ...settings, ...next };
@@ -809,11 +987,12 @@ app.whenReady().then(async () => {
     if (sttChanged && wasOpen) input().open();
     return settings;
   });
-  ipcMain.handle('channel:state', () => ({ url: channelUrl, connected: channel?.readyState === WebSocket.OPEN }));
+  ipcMain.handle('channel:state', () => ({ url: channelUrl, connected: channel?.readyState === WebSocket.OPEN, activity }));
   ipcMain.on('stt:open', () => input().open());
   ipcMain.on('stt:close', () => input().close());
   ipcMain.on('stt:audio', (_e, pcm) => input().append(pcm));
   ipcMain.on('stt:clear', () => { if (settings.ttsEngine !== 'live') stt.clear(); });
+  ipcMain.on('stt:commit', () => { if (settings.ttsEngine !== 'live') stt.commit(); });
   ipcMain.on('tts:stop', () => tts.stop());
   ipcMain.on('tts:test', () => {
     if (settings.ttsEngine === 'live') {
@@ -834,16 +1013,24 @@ app.whenReady().then(async () => {
   ipcMain.on('history:close', () => showHistory(false));
   ipcMain.on('history:clear', clearHistory);
   ipcMain.handle('history:summary', () => historySummary());
+  ipcMain.on('ui:report', (_e, state) => { rendererUi = state || {}; pushUi(); });
 
   createWindow();
   registerHotkey();
   win.webContents.once('did-finish-load', () => {
     handleArgs(process.argv);
+    if (!parseArgs(process.argv).connect) startThread();
     // Warm up the voice socket so the first reply starts instantly.
     if (settings.openaiKey && settings.ttsEngine === 'realtime') realtimeTts.connect().catch(() => {});
     send('engine', settings.ttsEngine);
   });
-  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+  // Fires when the app is opened again while running (Dock, `open`, the Ctrl+Option+Cmd+Space helper).
+  app.on('activate', () => {
+    if (!win || win.isDestroyed()) return createWindow();
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+  });
 });
 
 app.on('will-quit', () => {

@@ -46,12 +46,47 @@ function refreshStatus() {
   let s;
   if (!connected) s = 'Not connected — run /voice in a claude-voice terminal';
   else if (pendingPermission) s = 'Say “yes” or “no”';
-  else if (player.speaking) s = fullDuplex() ? 'Speaking… (just talk to interrupt)' : 'Speaking… (Esc to interrupt)';
-  else if (waitingForClaude) s = 'Claude is working… (watch the terminal)';
+  else if (pushToTalk() && listening) s = 'Recording… press Space to send (Esc cancels)';
+  else if (player.speaking) s = pushToTalk() ? 'Speaking… (Space to cut in and talk)' : fullDuplex() ? 'Speaking… (just talk to interrupt)' : 'Speaking… (Esc to interrupt)';
+  else if (waitingForClaude) s = 'Claude is working…';
   else if (listening) s = settings.ttsEngine === 'live' ? 'Live — just talk' : 'Listening…';
-  else s = 'Mic off — press Space';
+  else s = pushToTalk() ? 'Press Space to talk' : 'Mic off — press Space';
   $('status').textContent = s;
+  reportUi();
 }
+
+// ---------- app state for Claude (app_state / app_control tools in channel/server.js) ----------
+
+function reportUi() {
+  window.api.uiReport({
+    mic: listening,
+    speaking: player.speaking,
+    mode: settings.ttsEngine === 'live' ? 'live' : 'realtime',
+    settingsOpen: $('settings').open,
+    pairingOpen: $('pairDialog').open,
+    typedContextOpen: !$('contextBox').hidden,
+  });
+}
+
+// History and agents panels are handled in main; the rest of the UI lives here.
+const UI_ACTIONS = {
+  mic_on: () => startListening(),
+  mic_off: () => stopListening(),
+  stop_speaking: () => stopSpeaking(),
+  open_settings: () => { if (!$('settings').open) openSettings(); },
+  close_settings: () => $('settings').close(),
+  open_pairing: () => { if (!$('pairDialog').open) openPairing(); },
+  close_pairing: () => $('pairDialog').close(),
+  open_typed_context: () => setContextOpen(true),
+  close_typed_context: () => setContextOpen(false),
+  mode_live: () => settings.ttsEngine !== 'live' && toggleMode(),
+  mode_realtime: () => settings.ttsEngine === 'live' && toggleMode(),
+};
+
+window.api.onUiAction(async (action) => {
+  await UI_ACTIONS[action]?.();
+  reportUi();
+});
 
 // ---------- audio playback (24 kHz PCM16 stream) ----------
 
@@ -249,11 +284,22 @@ function stopSpeaking() {
 
 const mic = { stream: null, ctx: null, node: null };
 
+// Push-to-talk (GPT-Realtime only): Space starts recording, Space again sends it. Pauses never
+// end the turn, and starting to talk cuts Claude off.
+const pushToTalk = () => settings.ttsEngine !== 'live' && !!settings.pushToTalk;
+let recordedFrames = 0; // 100 ms mic frames in the current push-to-talk recording
+
 let starting = false;
 
 async function startListening() {
   if (listening || starting) return;
   if (!settings.openaiKey) { openSettings(); return; }
+  if (pushToTalk()) {
+    if (player.speaking || ttsActive) interrupt();
+    window.api.sttOpen();
+    window.api.sttClear();
+    recordedFrames = 0;
+  }
   starting = true;
   try { await openMic(); } finally { starting = false; }
 }
@@ -271,6 +317,7 @@ async function openMic() {
   await mic.ctx.audioWorklet.addModule('mic-worklet.js');
   mic.node = new AudioWorkletNode(mic.ctx, 'mic-processor');
   mic.node.port.onmessage = ({ data }) => {
+    if (pushToTalk()) { recordedFrames++; window.api.sttAudio(data.pcm); return; }
     if (!player.speaking) {
       bargeIn.reset();
       if (settings.ttsEngine !== 'live') window.api.sttAudio(data.pcm);
@@ -416,14 +463,21 @@ function interrupt() {
   player.muteUntil = performance.now() + 700;
 }
 
-function stopListening() {
+// submit: in push-to-talk, send what was recorded (false = discard it).
+function stopListening(submit = true) {
   if (!listening) return;
   listening = false;
   mic.stream?.getTracks().forEach((t) => t.stop());
   mic.ctx?.close();
   mic.stream = mic.ctx = mic.node = null;
   orb.clearMic();
-  window.api.sttClose();
+  if (pushToTalk()) {
+    // Keep the socket open: the transcript of the committed audio arrives on it.
+    // The API rejects commits under 100 ms, so treat a very short tap as a cancel.
+    if (submit && recordedFrames >= 3) window.api.sttCommit();
+    else window.api.sttClear();
+    recordedFrames = 0;
+  } else window.api.sttClose();
   refreshStatus();
 }
 
@@ -431,10 +485,11 @@ window.api.onStt((ev) => {
   switch (ev.type) {
     case 'closed':
       if (listening) {
-        stopListening();
+        stopListening(false);
         if (ev.reason) addNote(`Transcription closed (${ev.reason}).`, 'error');
       }
       break;
+    case 'committed':
     case 'speech_started':
       if (!userBubbles.has(ev.id)) {
         const b = addMsg('user partial', '…');
@@ -487,6 +542,15 @@ async function handleUtterance(text, forward = true) {
 
 window.api.onDelegated(() => { waitingForClaude = true; refreshStatus(); });
 
+// Live "what is Claude doing" under the orb (thinking / tool / background agents).
+function showActivity(a) {
+  if (!a) return;
+  Activity.render($('activity'), a);
+  waitingForClaude = a.state !== 'idle';
+  refreshStatus();
+}
+window.api.onActivity(showActivity);
+
 async function sendToThread(text) {
   const ok = await window.api.send({ type: 'user', text });
   if (!ok) { addNote('Not connected to a Claude Code thread. Run /voice in a claude-voice terminal.', 'error'); return; }
@@ -500,12 +564,14 @@ window.api.onChannel((ev) => {
     $('folder').textContent = (ev.cwd || '').replace(/^\/(Users|home)\/[^/]+/, '~');
     $('folder').title = ev.cwd || '';
     addNote(`Attached to the Claude Code thread in ${ev.cwd}`);
-    if (!listening && settings.openaiKey) startListening();
+    if (!listening && settings.openaiKey) pushToTalk() ? window.api.sttOpen() : startListening();
+  } else if (ev.state === 'starting') {
+    addNote(`Starting a Claude Code thread in Terminal (${ev.cwd.replace(/^\/(Users|home)\/[^/]+/, '~')})…`);
   } else if (ev.state === 'disconnected') {
     addNote('Thread disconnected (the claude session ended?). Run /voice again to reattach.', 'warn');
     waitingForClaude = false;
     $('folder').textContent = '';
-    stopListening();
+    stopListening(false);
   }
   showEmpty();
   refreshStatus();
@@ -549,9 +615,15 @@ function openSettings() {
   for (const el of form.elements) {
     if (!el.name) continue;
     if (el.type === 'checkbox') el.checked = !!settings[el.name];
-    else el.value = settings[el.name] ?? '';
+    else {
+      // Keep a saved model that isn't in the dropdown's list selectable.
+      const v = settings[el.name] ?? '';
+      if (el.tagName === 'SELECT' && v && ![...el.options].some((o) => o.value === v)) el.add(new Option(v));
+      el.value = v;
+    }
   }
   $('settings').showModal();
+  reportUi();
 }
 
 function readForm() {
@@ -569,14 +641,17 @@ $('testVoice').onclick = async () => {
 };
 
 $('settings').addEventListener('close', async () => {
+  reportUi();
   if ($('settings').returnValue !== 'save') return;
   settings = await window.api.setSettings(readForm());
+  renderMode();
   showEmpty();
 });
 
 // ---------- wiring ----------
 
 function primaryAction() {
+  if (pushToTalk()) return toggleMic();
   if (player.speaking || ttsActive) stopSpeaking();
   else if (listening) stopListening();
   else startListening();
@@ -590,6 +665,7 @@ function setContextOpen(open) {
   document.body.classList.toggle('context-open', open);
   if (open) $('contextInput').focus();
   else $('contextInput').blur();
+  reportUi();
 }
 
 function syncContext() {
@@ -611,6 +687,36 @@ window.api.onContextSent(() => {
   setContextOpen(false);
 });
 
+// Mode button: GPT-Realtime (reads Claude verbatim) <-> GPT-Live (full duplex, Claude is its delegate).
+const MODE_TITLES = {
+  realtime: 'Mode: GPT-Realtime, reads Claude word for word (click for GPT-Live)',
+  live: 'Mode: GPT-Live, full-duplex conversation that delegates to Claude (click for GPT-Realtime)',
+};
+
+function renderMode() {
+  const live = settings.ttsEngine === 'live';
+  $('modeBtn').classList.toggle('live', live);
+  $('modeBtn').title = MODE_TITLES[live ? 'live' : 'realtime'];
+}
+
+let switchingMode = false;
+async function toggleMode() {
+  if (switchingMode) return;
+  switchingMode = true;
+  try {
+    // The two engines use different mic pipelines (transcription socket vs WebRTC), so reopen the mic.
+    const wasListening = listening;
+    stopSpeaking();
+    if (wasListening) stopListening();
+    settings = await window.api.setSettings({ ttsEngine: settings.ttsEngine === 'live' ? 'realtime' : 'live' });
+    renderMode();
+    refreshStatus();
+    if (wasListening) await startListening();
+  } finally { switchingMode = false; }
+}
+
+$('modeBtn').onclick = () => { $('modeBtn').blur(); toggleMode(); };
+
 function toggleMic() { listening ? stopListening() : startListening(); }
 
 $('orb').onclick = toggleMic;
@@ -626,6 +732,26 @@ function renderAgentsSummary({ total, running, open }) {
 }
 window.api.onAgentsSummary(renderAgentsSummary);
 
+// ---------- iPhone pairing QR code ----------
+
+async function openPairing() {
+  try {
+    const info = await window.api.pairInfo();
+    $('pairQr').innerHTML = info.svg; // generated locally from a fixed module grid
+    $('pairHost').textContent = info.host;
+    $('pairToken').textContent = info.token;
+    $('pairNote').hidden = !info.created;
+    $('pairNote').textContent = 'Phone access is now on. Restart running Claude Code sessions so the phone can see them.';
+    $('pairDialog').showModal();
+    reportUi();
+  } catch (err) {
+    addNote(`Pairing: ${err.message}`, 'error');
+  }
+}
+
+$('qrBtn').onclick = () => { $('qrBtn').blur(); openPairing(); };
+$('pairDialog').addEventListener('close', reportUi);
+
 $('historyBtn').onclick = () => { $('historyBtn').blur(); window.api.historyToggle(); };
 function renderHistorySummary({ count, open }) {
   $('historyBtn').classList.toggle('open', open);
@@ -637,17 +763,19 @@ window.api.agentsSummary().then(renderAgentsSummary);
 window.api.onHotkey(primaryAction);
 
 document.addEventListener('keydown', (e) => {
-  if ($('settings').open || e.target === $('contextInput')) return;
+  if ($('settings').open || $('pairDialog').open || e.target === $('contextInput')) return;
   if (e.code === 'Space' && !e.repeat && !e.altKey && !e.metaKey && !e.ctrlKey) { e.preventDefault(); toggleMic(); }
-  else if (e.key === 'Escape') stopSpeaking();
+  else if (e.key === 'Escape') { if (pushToTalk() && listening) stopListening(false); else stopSpeaking(); }
 });
 
 (async () => {
   orb.init($('orb'));
   settings = await window.api.getSettings();
+  renderMode();
   const st = await window.api.channelState();
   connected = connected || st.connected;
-  if (connected && settings.openaiKey) startListening();
+  showActivity(st.activity);
+  if (connected && settings.openaiKey) pushToTalk() ? window.api.sttOpen() : startListening();
   showEmpty();
   refreshStatus();
 })();

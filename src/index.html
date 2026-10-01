@@ -8,9 +8,6 @@
 </head>
 <body>
   <header>
-    <button id="historyBtn" class="icon history-btn" title="Message history" aria-label="Message history">
-      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8.5 8.5 0 0 1-12.6 7.4L3 21l1.6-5.4A8.5 8.5 0 1 1 21 12z"/><path d="M8.5 10.5h7M8.5 14h4.5"/></svg>
-    </button>
     <div class="title"><span id="dot" class="dot"></span><span>Claude Voice</span></div>
     <span class="head-actions">
     <button id="agentsBtn" class="icon agents-btn" title="Sub-agents panel" aria-label="Sub-agents panel">
@@ -24,6 +21,7 @@
 
   <main class="stage">
     <canvas id="orb" title="Space to open / close the mic"></canvas>
+    <div id="activity" class="activity" role="status" aria-live="polite" hidden></div>
     <div id="caption"></div>
     <div id="perm"></div>
   </main>
@@ -33,19 +31,48 @@
       <textarea id="contextInput" rows="1" placeholder="Add context for your next message…" title="Enter to attach · Shift+Enter for a new line · Esc to close"></textarea>
     </div>
     <div class="controls">
-      <span></span>
+      <span class="left-ctrls">
+      <button id="historyBtn" class="ctx history-btn" title="Message history" aria-label="Message history">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8.5 8.5 0 0 1-12.6 7.4L3 21l1.6-5.4A8.5 8.5 0 1 1 21 12z"/><path d="M8.5 10.5h7M8.5 14h4.5"/></svg>
+      </button>
+      <button id="modeBtn" class="ctx mode" aria-label="Switch voice mode">
+        <svg class="mode-realtime" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M8 13h8M8 17h5"/></svg>
+        <svg class="mode-live" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"/><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/></svg>
+      </button>
+      </span>
       <button id="micBtn" class="mic" title="Mic on / off (Space)" aria-label="Toggle microphone">
         <svg class="mic-on" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="8" y="2" width="8" height="13" rx="4"/><path d="M5 10.5a1 1 0 0 1 2 0 5 5 0 0 0 10 0 1 1 0 0 1 2 0 7 7 0 0 1-6 6.93V20h3a1 1 0 0 1 0 2H8a1 1 0 0 1 0-2h3v-2.57a7 7 0 0 1-6-6.93z"/></svg>
         <svg class="mic-off" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"/><path d="M9 9v2a3 3 0 0 0 5.12 2.12"/><path d="M17 16.95A7 7 0 0 1 5 11v-1"/><path d="M19 10v1a7 7 0 0 1-.11 1.23"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/><line x1="3" y1="3" x2="21" y2="21"/></svg>
       </button>
-      <button id="contextBtn" class="ctx" title="Add typed context to your next voice message" aria-label="Add text context">
-        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M18 13h.01M9 15.5h6"/></svg>
-      </button>
+      <span class="right-ctrls">
+        <button id="contextBtn" class="ctx" title="Add typed context to your next voice message" aria-label="Add text context">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M18 13h.01M9 15.5h6"/></svg>
+        </button>
+        <button id="qrBtn" class="ctx" title="Connect the iPhone app (pairing QR code)" aria-label="Show pairing QR code">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 17h3v3h-3z"/></svg>
+        </button>
+      </span>
     </div>
     <div id="status">Not connected</div>
     <div id="folder"></div>
     <div class="hint"><kbd>Space</kbd> mic on / off · <kbd>Esc</kbd> stop Claude talking</div>
   </footer>
+
+  <dialog id="pairDialog" class="pair">
+    <form method="dialog">
+      <h2>Connect your iPhone</h2>
+      <p class="pair-sub">Scan with the Claude Voice iPhone app (Sessions → Scan pairing code) or the Camera app.</p>
+      <div id="pairQr" class="pair-qr"></div>
+      <p id="pairNote" class="pair-note" hidden></p>
+      <details class="pair-manual">
+        <summary>Enter it by hand</summary>
+        <div>Host <code id="pairHost"></code></div>
+        <div>Token <code id="pairToken"></code></div>
+      </details>
+      <p class="pair-sub">Your phone and this Mac must be on the same Wi‑Fi.</p>
+      <div class="actions"><span class="spacer"></span><button value="close" class="primary" autofocus>Done</button></div>
+    </form>
+  </dialog>
 
   <dialog id="settings">
     <form method="dialog" id="settingsForm">
@@ -75,19 +102,37 @@
           </select>
         </label>
       </div>
-      <label>GPT-Live model<input name="liveModel"></label>
+      <label>GPT-Live model
+        <select name="liveModel">
+          <option>gpt-live-1</option>
+        </select>
+      </label>
       <div class="row2">
-        <label>Realtime voice model<input name="realtimeModel"></label>
-        <label>TTS model<input name="ttsModel"></label>
+        <label>Realtime voice model
+          <select name="realtimeModel">
+            <option>gpt-realtime-2</option><option>gpt-realtime</option><option>gpt-realtime-mini</option>
+            <option>gpt-4o-realtime-preview</option><option>gpt-4o-mini-realtime-preview</option>
+          </select>
+        </label>
+        <label>TTS model
+          <select name="ttsModel">
+            <option>gpt-4o-mini-tts</option><option>tts-1</option><option>tts-1-hd</option>
+          </select>
+        </label>
       </div>
       <div class="row2">
-        <label>Transcription model<input name="sttModel"></label>
+        <label>Transcription model
+          <select name="sttModel">
+            <option>gpt-4o-transcribe</option><option>gpt-4o-mini-transcribe</option><option>whisper-1</option>
+          </select>
+        </label>
         <label>Language (ISO, optional)<input name="language" placeholder="pt (default), en…"></label>
       </div>
       <div class="row2">
         <label>End-of-turn silence (ms)<input name="silenceMs" type="number" min="200" max="3000" step="50"></label>
         <label>Global hotkey<input name="hotkey" placeholder="Alt+Space"></label>
       </div>
+      <label class="check"><input type="checkbox" name="pushToTalk"> Push to talk (Space to start, Space again to send)</label>
       <label class="check"><input type="checkbox" name="bargeIn"> Interrupt by talking over Claude</label>
       <div class="actions">
         <button type="button" id="testVoice" class="ghost">Test voice</button>
@@ -98,6 +143,7 @@
   </dialog>
 
   <script src="orb.js"></script>
+  <script src="activity.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

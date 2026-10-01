@@ -32,8 +32,6 @@ button.icon.agents-btn {
   border-radius: 999px; font: 500 11px/1 ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums;
 }
 button.icon.agents-btn .adot { width: 8px; height: 8px; }
-button.icon.history-btn { margin-right: auto; }
-button.icon.history-btn.open { color: var(--text); background: rgba(255,255,255,.06); }
 button.icon.agents-btn.open { color: var(--text); background: rgba(255,255,255,.06); }
 
 button { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 5px 10px; cursor: pointer; }
@@ -43,11 +41,13 @@ button.icon { -webkit-app-region: no-drag; background: transparent; border: none
 button.icon:hover { color: var(--text); background: rgba(255,255,255,.06); }
 
 .stage { flex: 1; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 0; }
-#orb { width: min(92vw, 62vh); aspect-ratio: 1; cursor: pointer; transition: width .25s ease; }
-body.context-open #orb { width: min(80vw, 44vh); }
+/* The orb is the only thing that shrinks: on a short window it gives up height so the caption never overlaps the controls. */
+#orb { flex: 0 1 auto; min-height: 0; height: min(92vw, 62vh); width: auto; max-width: 92vw; aspect-ratio: 1; cursor: pointer; transition: height .25s ease; }
+body.context-open #orb { height: min(80vw, 44vh); }
+.stage > :not(#orb) { flex: none; }
 
 #caption {
-  min-height: 3em; max-width: min(86vw, 380px); margin-top: -2vh; text-align: center;
+  min-height: 3em; max-width: min(86vw, 380px); margin: -2vh 0 12px; text-align: center;
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
 }
 #caption .msg { font-size: 15px; animation: fade-in .25s ease; }
@@ -76,6 +76,21 @@ footer { padding: 0 14px 16px; display: flex; flex-direction: column; align-item
 .ctx:hover, .ctx.open { color: var(--text); border-color: #4a413b; }
 .ctx.has-context { color: var(--accent); border-color: var(--accent); }
 .ctx.has-context::after { content: ''; position: absolute; top: 1px; right: 1px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.left-ctrls { justify-self: end; display: flex; align-items: center; gap: 10px; }
+.right-ctrls { justify-self: start; display: flex; align-items: center; gap: 10px; }
+
+dialog.pair { width: min(340px, 92vw); text-align: center; }
+.pair-sub { margin: 0 0 12px; font-size: 12px; color: var(--muted); }
+.pair-qr { width: 220px; height: 220px; margin: 4px auto 12px; border-radius: 10px; overflow: hidden; background: #fff; }
+.pair-qr svg { display: block; width: 100%; height: 100%; }
+.pair-note { margin: 0 0 12px; font-size: 12px; color: var(--warn); }
+.pair-manual { margin: 0 0 12px; font-size: 12px; color: var(--muted); text-align: left; }
+.pair-manual summary { cursor: pointer; text-align: center; margin-bottom: 6px; }
+.pair-manual div { margin: 4px 0; }
+.pair-manual code { font: 11px ui-monospace, Menlo, monospace; color: var(--text); word-break: break-all; user-select: all; }
+.mode .mode-live { display: none; }
+.mode.live .mode-live { display: block; }
+.mode.live .mode-realtime { display: none; }
 #contextBox { width: min(100%, 380px); margin: 4px 0 12px; animation: fade-in .2s ease; }
 #contextBox textarea {
   width: 100%; resize: none; font: inherit; font-size: 13px; color: var(--text); background: var(--panel);
@@ -115,3 +130,25 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--text); 
 label.check input { width: auto; margin: 0; }
 .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 .actions .spacer { flex: 1; }
+
+/* Live activity of the Claude thread (src/activity.js): under the orb and at the bottom of the history. */
+.activity { display: flex; flex-direction: column; align-items: center; gap: 4px; max-width: min(86vw, 380px); animation: fade-in .2s ease; }
+.activity[hidden] { display: none; }
+.act-row { display: flex; align-items: center; gap: 7px; max-width: 100%; min-width: 0; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.act-row.main {
+  padding: 4px 11px; border-radius: 999px; color: var(--text);
+  background: rgba(232,121,74,.1); border: 1px solid rgba(232,121,74,.35);
+}
+.act-row.bg { font-size: 11px; }
+.act-row .adot { width: 7px; height: 7px; }
+.act-tool { font-weight: 600; flex: none; }
+.act-arg { font: 11px ui-monospace, Menlo, monospace; color: var(--muted); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.act-label { flex: none; }
+.act-time { flex: none; font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.act-dots { display: inline-flex; gap: 3px; flex: none; }
+.act-dots i { width: 4px; height: 4px; border-radius: 50%; background: var(--accent); animation: act-dot 1.2s ease-in-out infinite; }
+.act-dots i:nth-child(2) { animation-delay: .15s; }
+.act-dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes act-dot { 0%, 80%, 100% { opacity: .25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }
+@media (prefers-reduced-motion: reduce) { .act-dots i, .adot.running { animation: none; } }
+.stage .activity { margin: -1vh 0 2vh; }

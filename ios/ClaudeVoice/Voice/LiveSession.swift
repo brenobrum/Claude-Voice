@@ -289,14 +289,18 @@ final class LiveSession: NSObject {
     private func startStats() {
         statsTimer?.invalidate()
         statsTimer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { [weak self] _ in
-            self?.pc?.statistics { report in
-                var mic: Double?, out: Double?
-                for s in report.statistics.values where (s.values["kind"] as? String) == "audio" {
-                    let level = (s.values["audioLevel"] as? NSNumber)?.doubleValue
-                    if s.type == "media-source" { mic = level } else if s.type == "inbound-rtp" { out = level }
-                }
-                Task { @MainActor in self?.levels(mic: mic, out: out) }
+            Task { @MainActor in self?.pollLevels() }
+        }
+    }
+
+    private func pollLevels() {
+        pc?.statistics { [weak self] report in
+            var mic: Double?, out: Double?
+            for s in report.statistics.values where (s.values["kind"] as? String) == "audio" {
+                let level = (s.values["audioLevel"] as? NSNumber)?.doubleValue
+                if s.type == "media-source" { mic = level } else if s.type == "inbound-rtp" { out = level }
             }
+            Task { @MainActor [mic, out] in self?.levels(mic: mic, out: out) }
         }
     }
 

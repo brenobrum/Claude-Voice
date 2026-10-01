@@ -22,11 +22,16 @@ function add(entry, scroll = true) {
   }
   const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
   const el = document.createElement('div');
-  el.className = `m ${entry.dir} ${entry.kind}`;
+  el.className = `m ${entry.dir} ${entry.kind}${entry.pending ? ' pending' : ''}`;
   el.textContent = entry.text;
   const meta = document.createElement('span');
   meta.className = 'meta';
   meta.textContent = `${entry.dir === 'sent' ? 'You' : 'Claude'} · ${fmtTime(entry.at)}`;
+  const dots = document.createElement('span');
+  dots.className = 'dots';
+  dots.title = 'Claude is working on it';
+  dots.append(...[0, 1, 2].map(() => document.createElement('i')));
+  meta.prepend(dots);
   el.appendChild(meta);
   log.appendChild(el);
   count++;
@@ -43,8 +48,10 @@ window.api.onHistoryAll((list) => {
   log.scrollTop = log.scrollHeight;
 });
 window.api.onHistoryAdd((entry) => add(entry));
+window.api.onHistoryActivity((a) => Activity.render($('activity'), a));
+window.api.onHistorySettled(() => log.querySelectorAll('.m.pending').forEach((el) => el.classList.remove('pending')));
 
 $('closeBtn').onclick = () => window.api.historyClose();
-$('clearBtn').onclick = () => { if (count && confirm('Clear the message history?')) window.api.historyClear(); };
+$('clearBtn').onclick = () => { if (count && confirm('Clear the messages of this thread?')) window.api.historyClear(); };
 
 renderCount();

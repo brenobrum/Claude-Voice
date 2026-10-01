@@ -43,6 +43,29 @@ extension AgentLogLine {
     }
 }
 
+/// What the Claude thread is doing, from Claude Code hooks (channel/server.js `activity`).
+struct ClaudeActivity: Equatable {
+    struct Background: Equatable { var label: String; var activity: String }
+    var state = "idle"            // idle | thinking | tool
+    var detail = ""               // the tool line, e.g. "Bash  npm test"
+    var since = Date()
+    var background: [Background] = []
+
+    var busy: Bool { state != "idle" }
+    var visible: Bool { busy || !background.isEmpty }
+
+    init() {}
+
+    init(_ d: [String: Any]) {
+        state = d["state"] as? String ?? "idle"
+        detail = d["detail"] as? String ?? ""
+        since = (d["since"] as? Double).map { Date(timeIntervalSince1970: $0 / 1000) } ?? Date()
+        background = (d["background"] as? [[String: Any]] ?? []).map {
+            Background(label: $0["label"] as? String ?? "agent", activity: $0["activity"] as? String ?? "")
+        }
+    }
+}
+
 struct PermissionRequest: Equatable {
     let requestID: String
     let toolName: String
@@ -64,6 +87,9 @@ final class ChannelClient: ObservableObject {
     var onAgents: (([Agent]) -> Void)?
     var onAgent: ((Agent) -> Void)?
     var onAgentLog: ((String, AgentLogLine) -> Void)?
+    var onMonitor: ((_ count: Int, _ needed: Bool) -> Void)?
+    var onNeedsAttach: (() -> Void)?
+    var onActivity: ((ClaudeActivity) -> Void)?
     var onStateChange: ((State, String?) -> Void)?   // state, reason
 
     private var task: URLSessionWebSocketTask?
@@ -186,7 +212,51 @@ final class ChannelClient: ObservableObject {
             if let d = msg["agent"] as? [String: Any], let a = Agent(d) { onAgent?(a) }
         case "agent_log":
             if let id = msg["id"] as? String, let d = msg["line"] as? [String: Any], let line = AgentLogLine(d) { onAgentLog?(id, line) }
+        case "activity":
+            if let d = msg["activity"] as? [String: Any] { onActivity?(ClaudeActivity(d)) }
+        case "monitor":
+            onMonitor?(msg["count"] as? Int ?? 0, msg["needed"] as? Bool ?? false)
+        case "needs_attach":
+            onNeedsAttach?()
         default: break
+        }
+    }
+}
+
+/// One-off request to any voice channel on a Mac (open / end a thread), without touching the voice connection:
+/// connect, wait for the hello, send, and return the `thread_result` text.
+enum ThreadControl {
+    static func send(_ msg: [String: Any], via s: SessionInfo, token: String) async -> (ok: Bool, text: String) {
+        var comps = URLComponents()
+        comps.scheme = "ws"; comps.host = s.host; comps.port = s.port; comps.path = "/"
+        comps.queryItems = [URLQueryItem(name: "token", value: token)]
+        guard let url = comps.url, let data = try? JSONSerialization.data(withJSONObject: msg),
+              let body = String(data: data, encoding: .utf8) else { return (false, "Bad request.") }
+        let t = URLSession.shared.webSocketTask(with: url)
+        t.resume()
+        return await withTaskGroup(of: (Bool, String).self) { group in
+            group.addTask {
+                do {
+                    var sent = false
+                    while true {
+                        guard case .string(let raw) = try await t.receive(),
+                              let d = raw.data(using: .utf8),
+                              let m = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { continue }
+                        let type = m["type"] as? String
+                        if type == "hello", !sent { sent = true; try await t.send(.string(body)) }
+                        if type == "thread_result" { return (m["ok"] as? Bool ?? false, m["text"] as? String ?? "") }
+                    }
+                } catch { return (false, "Couldn't reach \(s.machine): \(error.localizedDescription)") }
+            }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(8))
+                return (false, "\(s.machine) didn't answer.")
+            }
+            let first = await group.next() ?? (false, "")
+            // receive() doesn't honor task cancellation; closing the socket ends it.
+            t.cancel(with: .normalClosure, reason: nil)
+            group.cancelAll()
+            return first
         }
     }
 }
