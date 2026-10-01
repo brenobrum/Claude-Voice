@@ -2,6 +2,9 @@ const $ = (id) => document.getElementById(id);
 const log = $('caption'); // shows only the latest line
 
 let settings = {};
+// An OpenAI key is only needed when something runs on OpenAI (everything can run on this Mac instead).
+const needsKey = () => settings.ttsEngine !== 'local' || settings.sttEngine !== 'local';
+const canListen = () => !!settings.openaiKey || !needsKey();
 let connected = false;
 let listening = false;
 let waitingForClaude = false;
@@ -33,7 +36,7 @@ function showEmpty() {
   if (log.querySelector('.msg, .note')) return;
   const el = document.createElement('div');
   el.className = 'empty';
-  if (!settings.openaiKey) el.innerHTML = 'Add your OpenAI API key in Settings.';
+  if (!canListen()) el.innerHTML = 'Add your OpenAI API key in Settings, or pick "On this Mac" for both voice and listening.';
   else if (!connected) el.innerHTML = 'Run <code>claude-voice</code> in a terminal, then type <code>/voice</code>.';
   else return log.replaceChildren();
   log.replaceChildren(el);
@@ -294,7 +297,7 @@ let starting = false;
 
 async function startListening() {
   if (listening || starting) return;
-  if (!settings.openaiKey) { openSettings(); return; }
+  if (!canListen()) { openSettings(); return; }
   // Opening the mic always cuts Claude off.
   if (player.speaking || ttsActive) interrupt();
   if (pushToTalk()) {
@@ -566,7 +569,7 @@ window.api.onChannel((ev) => {
     $('folder').textContent = ev.t3 ? `T3 · ${ev.t3}` : (ev.cwd || '').replace(/^\/(Users|home)\/[^/]+/, '~');
     $('folder').title = ev.cwd || '';
     addNote(ev.t3 ? `Attached to the T3 Code thread "${ev.t3}"` : `Attached to the Claude Code thread in ${ev.cwd}`);
-    if (!listening && settings.openaiKey) pushToTalk() ? window.api.sttOpen() : startListening();
+    if (!listening && canListen()) pushToTalk() ? window.api.sttOpen() : startListening();
   } else if (ev.state === 'starting') {
     addNote(`Starting a Claude Code thread in Terminal (${ev.cwd.replace(/^\/(Users|home)\/[^/]+/, '~')})…`);
   } else if (ev.state === 'disconnected') {
@@ -968,7 +971,7 @@ document.addEventListener('keyup', (e) => {
   const st = await window.api.channelState();
   connected = connected || st.connected;
   showActivity(st.activity);
-  if (connected && settings.openaiKey) pushToTalk() ? window.api.sttOpen() : startListening();
+  if (connected && canListen()) pushToTalk() ? window.api.sttOpen() : startListening();
   showEmpty();
   refreshStatus();
 })();

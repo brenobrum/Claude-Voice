@@ -1,7 +1,7 @@
 {
   "name": "claude-voice",
   "productName": "Claude Voice",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Talk to the Claude Code CLI with your voice (OpenAI STT + TTS)",
   "main": "src/main.js",
   "scripts": {
@@ -20,11 +20,13 @@
       "src/**/*",
       "channel/**/*",
       "local-tts/server.py",
+      "local-stt/server.py",
       "INSTALL-PROMPT.md",
       "package.json"
     ],
     "asarUnpack": [
-      "local-tts/**"
+      "local-tts/**",
+      "local-stt/**"
     ],
     "afterPack": "build/adhoc-sign.js",
     "mac": {

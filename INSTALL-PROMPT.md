@@ -58,10 +58,10 @@ Instale o Claude Voice nesta máquina (macOS, Apple Silicon) e deixe o `/voice` 
 
 9. **Atalho global:** rode `node $REPO/bin/shortcut.js`. Isso faz Ctrl+Option+Cmd+Space abrir o Claude Voice de qualquer lugar, mesmo com o app fechado.
 
-10. **Voz local grátis:** rode `node $REPO/bin/local-voice.js` (precisa do `uv`; se faltar, `brew install uv`). Isso instala o Chatterbox, que roda a voz do Claude direto no Mac, de graça, baixa o modelo (~2,6 GB) e cria uma voz feminina inicial. No app ele aparece em Settings → "On this Mac", onde também dá pra clonar a própria voz.
+10. **Modelos locais grátis:** rode `node $REPO/bin/local-voice.js` (precisa do `uv`; se faltar, `brew install uv`). Isso instala, rodando direto no Mac e de graça: a voz do Claude (Chatterbox, ~2,6 GB, com uma voz feminina inicial) e a transcrição do que você fala (Whisper large-v3-turbo, ~1,5 GB). No app eles aparecem em Settings como "On this Mac" (em "Claude's voice" e em "Listening to you"), onde também dá pra clonar a própria voz. Com os dois locais, nem precisa de chave da OpenAI.
 
 11. **T3 Code (se estiver instalado):** se existir um app `T3 Code*.app` em `/Applications`, abra o T3 Code (`open -a` com o nome do app), espere uns segundos e rode `node $REPO/bin/t3.js`. Isso conecta o Claude Voice ao T3: digitar `/voice` (ou `$voice`) numa conversa do T3 abre o voice mode nela, com qualquer agente. Se o T3 não estiver instalado, pule este passo.
 
 12. **Verificação:** `claude mcp get voice` deve mostrar o servidor conectado; abra o app uma vez (`open -a "Claude Voice"`) pra liberar o microfone.
 
-No final, me diga em 3 linhas: reinicie o Claude Code (ou rode `claude-voice` no terminal), digite `/voice`, e na primeira vez coloque a chave da OpenAI nas Settings do app (pra voz grátis, escolha "On this Mac" ali).
+No final, me diga em 3 linhas: reinicie o Claude Code (ou rode `claude-voice` no terminal), digite `/voice`, e na primeira vez abra as Settings do app: pra usar tudo grátis escolha "On this Mac" em "Claude's voice" e em "Listening to you"; senão, coloque a chave da OpenAI.

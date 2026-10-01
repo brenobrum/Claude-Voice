@@ -26,7 +26,8 @@ const DEFAULTS = {
   realtimeModel: 'gpt-realtime-2',
   ttsModel: 'gpt-4o-mini-tts',
   voice: 'marin',
-  localVoice: 'default',        // 'default' (built in) or a cloned voice in ~/.claude-voice/voices
+  localVoice: 'default',
+  sttEngine: 'openai',          // 'openai' (Realtime transcription) or 'local' (Whisper on this Mac, local-stt/server.py)        // 'default' (built in) or a cloned voice in ~/.claude-voice/voices
   sttModel: 'gpt-4o-transcribe',
   language: 'pt',               // Brazilian Portuguese by default
   silenceMs: 1000,              // how long the user must be quiet before their turn ends
@@ -557,6 +558,96 @@ const stt = {
   commit() { this.post({ type: 'input_audio_buffer.commit' }); },
 };
 
+// ---------- speech-to-text on this Mac (Whisper, local-stt/server.py) ----------
+// Same events as `stt`. Push-to-talk transcribes the recording on commit; hands-free cuts utterances with a
+// simple energy detector (speech = clearly above the room's noise floor) and transcribes each one.
+
+const localSttServer = localServer('local-stt', 'Local transcription');
+
+const localStt = {
+  active: false,
+  frames: [],      // PCM16 frames of the current utterance (push-to-talk: the whole recording)
+  preroll: [],     // hands-free: the last few frames before speech, so the first syllable isn't cut
+  speaking: false,
+  quietMs: 0,
+  noise: 300,      // running estimate of the room's level (RMS, PCM16 units)
+  seq: 0,
+  queue: Promise.resolve(),
+
+  open() {
+    if (this.active) return;
+    this.active = true;
+    this.reset();
+    localSttServer.start().catch((err) => { send('error', err.message); this.close(); send('stt', { type: 'closed' }); });
+    send('stt', { type: 'open' });
+  },
+  close() { this.active = false; this.reset(); },
+  reset() { this.frames = []; this.preroll = []; this.speaking = false; this.quietMs = 0; },
+  clear() { this.reset(); },
+
+  append(pcm) {
+    if (!this.active) return;
+    // IPC hands us an ArrayBuffer (or a typed-array view of one): copy it as PCM16 samples.
+    const bytes = pcm instanceof ArrayBuffer ? pcm : pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength);
+    const frame = new Int16Array(bytes.slice(0, bytes.byteLength - (bytes.byteLength % 2)));
+    if (settings.pushToTalk) { this.frames.push(frame); return; }
+    let sum = 0;
+    for (const v of frame) sum += v * v;
+    const rms = Math.sqrt(sum / (frame.length || 1));
+    const ms = (frame.length / 24000) * 1000;
+    const loud = rms > Math.max(500, this.noise * 3);
+    if (!loud) this.noise = this.noise * 0.95 + rms * 0.05;
+    if (!this.speaking) {
+      this.preroll.push(frame);
+      if (this.preroll.length > 4) this.preroll.shift();
+      if (!loud) return;
+      this.speaking = true;
+      this.quietMs = 0;
+      this.frames = this.preroll;
+      this.preroll = [];
+      this.id = `local-${++this.seq}`;
+      send('stt', { type: 'speech_started', id: this.id });
+      return;
+    }
+    this.frames.push(frame);
+    this.quietMs = loud ? 0 : this.quietMs + ms;
+    if (this.quietMs >= (Number(settings.silenceMs) || 1000)) {
+      send('stt', { type: 'speech_stopped', id: this.id });
+      this.flush(this.id);
+      this.speaking = false;
+    }
+  },
+
+  commit() {
+    if (!this.active) return;
+    const id = `local-${++this.seq}`;
+    send('stt', { type: 'committed', id });
+    this.flush(id);
+  },
+
+  // Transcribe the buffered audio; results come back in order.
+  flush(id) {
+    const frames = this.frames;
+    this.frames = [];
+    const total = frames.reduce((n, f) => n + f.length, 0);
+    const pcm = new Int16Array(total);
+    let o = 0;
+    for (const f of frames) { pcm.set(f, o); o += f.length; }
+    this.queue = this.queue.then(async () => {
+      let text = '';
+      try {
+        const port = await localSttServer.start();
+        const lang = encodeURIComponent((settings.language || '').slice(0, 2));
+        const res = await fetch(`http://127.0.0.1:${port}/transcribe?language=${lang}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: Buffer.from(pcm.buffer),
+        });
+        text = (await res.json()).text || '';
+      } catch (err) { send('error', `Local transcription: ${err.message}`); }
+      send('stt', { type: 'final', id, text });
+    });
+  },
+};
+
 // ---------- text-to-speech ----------
 
 // Both engines emit: tts {type:'start', id, text} / {type:'text', id, delta} / {type:'end', id}
@@ -605,45 +696,51 @@ const tts = {
 
 // Engine 3: Chatterbox on this Mac (local-tts/server.py; its Python lives in ~/.claude-voice/local-tts).
 // Free. The server streams a sentence at a time, a bit slower than real time on an M1.
-const LOCAL_TTS_DIR = path.join(os.homedir(), '.claude-voice', 'local-tts');
+const LOCAL_ENV_DIR = path.join(os.homedir(), '.claude-voice', 'local-tts'); // Python env shared by both local servers
 const VOICES_DIR = path.join(os.homedir(), '.claude-voice', 'voices');
-const localTts = {
-  proc: null,
-  ready: null, // Promise<port>
 
-  start() {
-    if (this.ready) return this.ready;
-    const python = path.join(LOCAL_TTS_DIR, '.venv', 'bin', 'python');
-    const script = path.join(__dirname, '..', 'local-tts', 'server.py').replace('app.asar', 'app.asar.unpacked');
-    if (!fs.existsSync(python)) return Promise.reject(new Error(`Local voice isn't installed (${python} is missing).`));
-    this.ready = new Promise((resolve, reject) => {
-      const proc = require('child_process').spawn(python, [script], { stdio: ['ignore', 'pipe', 'pipe'] });
-      this.proc = proc;
-      let out = '';
-      let err = '';
-      proc.stdout.on('data', (d) => {
-        out += d;
-        const m = out.match(/READY (\d+)/);
-        if (m) resolve(Number(m[1]));
-      });
-      proc.stderr.on('data', (d) => { err = (err + d).slice(-2000); });
-      proc.on('exit', (code) => {
-        if (this.proc !== proc) return;
-        this.proc = null;
-        this.ready = null;
-        reject(new Error(`Local voice stopped (exit ${code}): ${err.trim().split('\n').pop() || 'no output'}`));
-      });
-    });
-    return this.ready;
-  },
+// A Python model server (local-tts/ or local-stt/) that prints "READY <port>" once its model is loaded.
+function localServer(dir, label) {
+  return {
+    proc: null,
+    ready: null, // Promise<port>
 
-  stop() {
-    const proc = this.proc;
-    this.proc = null;
-    this.ready = null;
-    proc?.kill();
-  },
-};
+    start() {
+      if (this.ready) return this.ready;
+      const python = path.join(LOCAL_ENV_DIR, '.venv', 'bin', 'python');
+      const script = path.join(__dirname, '..', dir, 'server.py').replace('app.asar', 'app.asar.unpacked');
+      if (!fs.existsSync(python)) return Promise.reject(new Error(`${label} isn't installed: run "claude-voice local-voice" in a terminal.`));
+      this.ready = new Promise((resolve, reject) => {
+        const proc = require('child_process').spawn(python, [script], { stdio: ['ignore', 'pipe', 'pipe'] });
+        this.proc = proc;
+        let out = '';
+        let err = '';
+        proc.stdout.on('data', (d) => {
+          out += d;
+          const m = out.match(/READY (\d+)/);
+          if (m) resolve(Number(m[1]));
+        });
+        proc.stderr.on('data', (d) => { err = (err + d).slice(-2000); });
+        proc.on('exit', (code) => {
+          if (this.proc !== proc) return;
+          this.proc = null;
+          this.ready = null;
+          reject(new Error(`${label} stopped (exit ${code}): ${err.trim().split('\n').pop() || 'no output'}`));
+        });
+      });
+      return this.ready;
+    },
+
+    stop() {
+      const proc = this.proc;
+      this.proc = null;
+      this.ready = null;
+      proc?.kill();
+    },
+  };
+}
+
+const localTts = localServer('local-tts', 'Local voice');
 
 async function speakLocal(text, id, gen) {
   const port = await localTts.start();
@@ -1023,7 +1120,7 @@ const live = {
 };
 
 // Route mic/session control to whichever engine is active.
-const input = () => (settings.ttsEngine === 'live' ? live : stt);
+const input = () => (settings.ttsEngine === 'live' ? live : settings.sttEngine === 'local' ? localStt : stt);
 
 // ---------- iPhone pairing (same token file as `claude-voice pair`) ----------
 
@@ -1161,15 +1258,17 @@ app.whenReady().then(async () => {
     if (LIVE_DISABLED && next.ttsEngine === 'live') delete next.ttsEngine;
     if (LIVE_DISABLED && LIVE_ONLY_VOICES.includes(next.voice)) delete next.voice;
     const voiceChanged = ['voice', 'realtimeModel', 'openaiKey', 'language'].some((k) => next[k] !== undefined && next[k] !== settings[k]);
-    const sttChanged = ['sttModel', 'language', 'silenceMs', 'pushToTalk', 'openaiKey', 'ttsEngine', 'liveModel', 'voice'].some((k) => next[k] !== undefined && next[k] !== settings[k]);
-    const wasOpen = !!(stt.ws || live.active);
-    if (sttChanged) { stt.close(); live.close(); }
+    const sttChanged = ['sttModel', 'language', 'silenceMs', 'pushToTalk', 'openaiKey', 'ttsEngine', 'sttEngine', 'liveModel', 'voice'].some((k) => next[k] !== undefined && next[k] !== settings[k]);
+    const wasOpen = !!(stt.ws || live.active || localStt.active);
+    if (sttChanged) { stt.close(); localStt.close(); live.close(); }
     settings = { ...settings, ...next };
     saveSettings(settings);
     registerHotkey();
     if (voiceChanged) realtimeTts.reset();
     if (settings.ttsEngine === 'local') localTts.start().catch((err) => send('error', err.message));
     else localTts.stop();
+    if (settings.sttEngine === 'local') localSttServer.start().catch((err) => send('error', err.message));
+    else localSttServer.stop();
     if (sttChanged && wasOpen) input().open();
     return settings;
   });
@@ -1186,8 +1285,8 @@ app.whenReady().then(async () => {
   ipcMain.on('stt:open', () => input().open());
   ipcMain.on('stt:close', () => input().close());
   ipcMain.on('stt:audio', (_e, pcm) => input().append(pcm));
-  ipcMain.on('stt:clear', () => { if (settings.ttsEngine !== 'live') stt.clear(); });
-  ipcMain.on('stt:commit', () => { if (settings.ttsEngine !== 'live') stt.commit(); });
+  ipcMain.on('stt:clear', () => { if (settings.ttsEngine !== 'live') input().clear(); });
+  ipcMain.on('stt:commit', () => { if (settings.ttsEngine !== 'live') input().commit(); });
   ipcMain.on('tts:stop', () => tts.stop());
   ipcMain.on('tts:test', () => {
     if (settings.ttsEngine === 'live') {
@@ -1220,6 +1319,7 @@ app.whenReady().then(async () => {
     // Warm up the voice socket so the first reply starts instantly.
     if (settings.openaiKey && settings.ttsEngine === 'realtime') realtimeTts.connect().catch(() => {});
     if (settings.ttsEngine === 'local') localTts.start().catch((err) => send('error', err.message));
+    if (settings.sttEngine === 'local') localSttServer.start().catch((err) => send('error', err.message));
     send('engine', settings.ttsEngine);
   });
   // Fires when the app is opened again while running (Dock, `open`, the Ctrl+Option+Cmd+Space helper).
@@ -1238,6 +1338,7 @@ app.on('will-quit', () => {
   live.close();
   realtimeTts.reset();
   localTts.stop();
+  localSttServer.stop();
   t3.stop();
 });
 app.on('window-all-closed', () => app.quit());

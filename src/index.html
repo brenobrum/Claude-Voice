@@ -118,6 +118,13 @@
 
       <section>
         <h3>Listening to you</h3>
+        <p class="sub">How what you say is turned into text.</p>
+        <div class="engines">
+          <label class="engine"><input type="radio" name="sttEngine" value="local">
+            <span><b>On this Mac</b><small>Free · private · Whisper runs locally</small></span></label>
+          <label class="engine"><input type="radio" name="sttEngine" value="openai">
+            <span><b>OpenAI</b><small>Shows words while you talk · small cost</small></span></label>
+        </div>
         <label class="check"><input type="checkbox" name="pushToTalk"> Push to talk <small>— press Space to start, Space again to send</small></label>
         <label class="check"><input type="checkbox" name="bargeIn"> Interrupt Claude by talking over it</label>
         <div class="row2">
@@ -128,7 +135,7 @@
 
       <section>
         <h3>OpenAI account</h3>
-        <p class="sub">Needed to understand what you say, even when Claude's voice runs on this Mac.</p>
+        <p class="sub">Only needed for the OpenAI options above.</p>
         <label>API key<input name="openaiKey" type="password" placeholder="sk-…"></label>
       </section>
 

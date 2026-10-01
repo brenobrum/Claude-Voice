@@ -5,7 +5,9 @@ Talk to a **live Claude Code terminal session** and hear it answer, in real time
 - **Voice engine (default): `realtime`.** Realtime transcription plus `gpt-realtime-2` reading Claude's reply word for word. (GPT-Live, `gpt-live-1`, is disabled for now.)
 - **Other engines (Settings):**
   - `tts`: the same, but with `gpt-4o-mini-tts`.
-  - `local` ("On this Mac"): Chatterbox Multilingual running on Apple Silicon, free. Clone any voice from a 10–20 s recording in Settings → Clone a voice. Set it up once with `claude-voice local-voice` (needs `uv`; downloads ~2.6 GB). Transcription still uses OpenAI.
+  - `local` ("On this Mac"): Chatterbox Multilingual running on Apple Silicon, free. Clone any voice from a 10–20 s recording in Settings → Clone a voice.
+- **Listening (Settings):** OpenAI Realtime transcription (shows words while you talk), or **On this Mac**: Whisper large-v3-turbo running locally, free and private (~1 s per phrase on an M1 Pro; hands-free mode cuts phrases with a simple voice detector). With both set to On this Mac, no OpenAI key is needed.
+- **Local models:** `claude-voice local-voice` sets up both (needs `uv`; downloads ~4 GB); the install prompt runs it. Servers: `local-tts/server.py`, `local-stt/server.py`.
 - Your words reach the thread as `← voice: …` through a Claude Code channel in terminal `claude-voice` sessions, or as Monitor events in desktop-app sessions. Claude replies with the `speak` tool.
 - Tool-permission prompts are relayed to the app: say "yes" or "no", or click Allow / Deny.
 - **Live activity:** under the orb (and at the bottom of the message history) the apps show what the thread is doing: "Thinking…", the tool it's running (e.g. `Bash  npm test`) with elapsed time, and agents working in the background. Your sent messages keep a "processing" shimmer until the thread goes idle. This comes from Claude Code hooks: run `claude-voice hooks` once (adds them to `~/.claude/settings.json`; `--remove` undoes it), then start a new session. Without them the indicator only lasts until Claude's first spoken reply.
