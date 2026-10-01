@@ -671,7 +671,8 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
     if (!prompt) return text('Could not load the install prompt (no bundled copy and GitHub fetch failed).', true);
     try {
       await new Promise((resolve, reject) => {
-        const p = spawn('pbcopy');
+        // Without a UTF-8 locale (Claude Code doesn't pass LANG) pbcopy reads the bytes as Mac Roman: "ç" -> "√ß".
+        const p = spawn('pbcopy', { env: { ...process.env, LANG: 'en_US.UTF-8', LC_ALL: 'en_US.UTF-8' } });
         p.on('error', reject);
         p.on('close', (code) => code === 0 ? resolve() : reject(new Error(`pbcopy exit ${code}`)));
         p.stdin.end(prompt);
