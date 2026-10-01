@@ -132,6 +132,24 @@
         <label>API key<input name="openaiKey" type="password" placeholder="sk-…"></label>
       </section>
 
+      <section>
+        <h3>T3 Code</h3>
+        <p class="sub">Type <code>/voice</code> (or <code>$voice</code>) in any T3 Code thread to talk to it from here, whatever agent it runs.</p>
+        <p id="t3Status" class="t3-status"></p>
+        <div id="t3PairRow">
+          <button type="button" id="t3Connect" class="primary">Connect to T3 Code</button>
+          <details class="t3-manual">
+            <summary>Or paste a pairing link</summary>
+            <p class="sub">In T3 Code: Settings → Connections → create a pairing link.</p>
+            <div class="inline">
+              <input id="t3Link" placeholder="http://127.0.0.1:3773/pair#token=…" autocomplete="off">
+              <button type="button" id="t3PasteConnect">Connect</button>
+            </div>
+          </details>
+        </div>
+        <button type="button" id="t3Disconnect" class="ghost">Disconnect T3 Code</button>
+      </section>
+
       <details>
         <summary>Advanced</summary>
         <div class="row2">

@@ -5,6 +5,7 @@ const path = require('path');
 const WebSocket = require('ws');
 const os = require('os');
 const { execFile, execFileSync } = require('child_process');
+const { createT3 } = require('./t3');
 const QRCode = require('qrcode-terminal/vendor/QRCode');
 const QRErrorCorrectLevel = require('qrcode-terminal/vendor/QRCode/QRErrorCorrectLevel');
 
@@ -226,7 +227,7 @@ function historySummary() {
 }
 
 function setThread(cwd) {
-  if (cwd && cwd !== settings.lastCwd) { settings.lastCwd = cwd; saveSettings(settings); }
+  if (cwd && !cwd.startsWith('t3:') && cwd !== settings.lastCwd) { settings.lastCwd = cwd; saveSettings(settings); }
   const id = threadId(cwd);
   if (!id || id === currentThread) return;
   currentThread = id;
@@ -333,6 +334,7 @@ function wsError(prefix, ev) {
 
 let channel = null;
 let channelUrl = null;
+let channelHello = null; // the attached Claude thread, to go back to when a T3 thread is left
 
 function connectChannel(url) {
   if (channel) { channel.removeAllListeners(); channel.close(); channel = null; }
@@ -349,8 +351,10 @@ function connectChannel(url) {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
     if (msg.type === 'hello') {
+      if (t3.isAttached()) t3.detach();
       setThread(msg.cwd);
-      send('channel', { state: 'connected', cwd: msg.cwd, project: msg.project });
+      channelHello = { state: 'connected', cwd: msg.cwd, project: msg.project };
+      send('channel', channelHello);
       pushUi(true);
     }
     else if (msg.type === 'ui_action') uiAction(String(msg.action || ''));
@@ -417,6 +421,7 @@ function uiAction(action) {
 let pendingContext = '';
 
 function toChannel(msg) {
+  if (msg.type === 'user' && t3.isAttached()) return toT3(msg.text);
   if (!channel || channel.readyState !== WebSocket.OPEN) return false;
   if (msg.type === 'user' && pendingContext) {
     msg = { ...msg, text: `${msg.text}\n\n(Typed context from the user: ${pendingContext})` };
@@ -426,6 +431,51 @@ function toChannel(msg) {
   channel.send(JSON.stringify(msg));
   if (msg.type === 'user') addHistory('sent', msg.text);
   else if (msg.type === 'permission') addHistory('sent', msg.behavior === 'allow' ? 'Allowed' : 'Denied', 'permission');
+  return true;
+}
+
+// ---------- T3 Code (src/t3.js): /voice in a T3 thread attaches the app to it ----------
+
+let t3Sent = ''; // our own last message, so its echo from T3 isn't added to the history twice
+
+const t3 = createT3({
+  onAttach(thread) {
+    if (!thread) {
+      const back = channel?.readyState === WebSocket.OPEN && channelHello;
+      if (back) setThread(back.cwd);
+      send('channel', back || { state: 'disconnected' });
+      return;
+    }
+    setThread(`t3:${thread.threadId}`);
+    send('channel', { state: 'connected', cwd: thread.cwd, project: thread.project, t3: thread.title });
+    send('t3', t3.status());
+    if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); }
+  },
+  onSpeak(text, raw) {
+    addHistory('received', raw);
+    if (settings.ttsEngine === 'live') live.relay(text);
+    else tts.say(text);
+  },
+  onActivity(on) {
+    setActivity(on ? { state: 'thinking', detail: '', background: [] } : IDLE);
+  },
+  onUserText(text) {
+    if (text.trim() === t3Sent) { t3Sent = ''; return; }
+    if (!/^[/$]voice\b/i.test(text.trim())) addHistory('sent', text);
+  },
+  onState() { send('t3', t3.status()); },
+  log: (m) => console.warn(m),
+});
+
+function toT3(text) {
+  if (pendingContext) {
+    text = `${text}\n\n(Typed context from the user: ${pendingContext})`;
+    pendingContext = '';
+    send('context:sent');
+  }
+  t3Sent = text.trim();
+  addHistory('sent', text);
+  t3.sendText(text).then((ok) => { if (!ok) send('error', "Couldn't send that to T3 Code."); });
   return true;
 }
 
@@ -1128,6 +1178,9 @@ app.whenReady().then(async () => {
     if (listVoices().includes(name)) fs.rmSync(path.join(VOICES_DIR, `${name}.wav`));
     return listVoices();
   });
+  ipcMain.handle('t3:status', () => t3.status());
+  ipcMain.handle('t3:pair', (_e, link) => t3.pair(link));
+  ipcMain.on('t3:unpair', () => t3.unpair());
   ipcMain.handle('channel:state', () => ({ url: channelUrl, connected: channel?.readyState === WebSocket.OPEN, activity }));
   ipcMain.on('stt:open', () => input().open());
   ipcMain.on('stt:close', () => input().close());
@@ -1158,6 +1211,7 @@ app.whenReady().then(async () => {
 
   createWindow();
   registerHotkey();
+  t3.start();
   win.webContents.once('did-finish-load', () => {
     handleArgs(process.argv);
     if (!parseArgs(process.argv).connect) startThread();
@@ -1182,5 +1236,6 @@ app.on('will-quit', () => {
   live.close();
   realtimeTts.reset();
   localTts.stop();
+  t3.stop();
 });
 app.on('window-all-closed', () => app.quit());

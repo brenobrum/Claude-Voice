@@ -563,9 +563,9 @@ async function sendToThread(text) {
 window.api.onChannel((ev) => {
   connected = ev.state === 'connected';
   if (ev.state === 'connected') {
-    $('folder').textContent = (ev.cwd || '').replace(/^\/(Users|home)\/[^/]+/, '~');
+    $('folder').textContent = ev.t3 ? `T3 · ${ev.t3}` : (ev.cwd || '').replace(/^\/(Users|home)\/[^/]+/, '~');
     $('folder').title = ev.cwd || '';
-    addNote(`Attached to the Claude Code thread in ${ev.cwd}`);
+    addNote(ev.t3 ? `Attached to the T3 Code thread "${ev.t3}"` : `Attached to the Claude Code thread in ${ev.cwd}`);
     if (!listening && settings.openaiKey) pushToTalk() ? window.api.sttOpen() : startListening();
   } else if (ev.state === 'starting') {
     addNote(`Starting a Claude Code thread in Terminal (${ev.cwd.replace(/^\/(Users|home)\/[^/]+/, '~')})…`);
@@ -669,6 +669,44 @@ $('deleteVoice').onclick = async () => {
   await window.api.deleteVoice(name);
   fillLocalVoices('default');
 };
+
+// ---------- T3 Code ----------
+
+const T3_TEXT = {
+  unpaired: 'Not connected.',
+  searching: 'Connected. Waiting for T3 Code to open…',
+  connected: 'Connected. Type /voice in a T3 Code thread.',
+  expired: 'The connection expired. Paste a new pairing link.',
+};
+
+function renderT3(st) {
+  const paired = st.state !== 'unpaired' && st.state !== 'expired';
+  $('t3Status').textContent = st.attached ? `Talking to "${st.attached.title}".` : T3_TEXT[st.state] || '';
+  $('t3Status').classList.toggle('ok', st.state === 'connected');
+  $('t3PairRow').hidden = paired;
+  $('t3Disconnect').hidden = !paired;
+}
+
+window.api.onT3(renderT3);
+window.api.t3Status().then(renderT3);
+
+async function connectT3(button, link) {
+  button.disabled = true;
+  $('t3Status').textContent = 'Connecting…';
+  try {
+    await window.api.t3Pair(link);
+    $('t3Link').value = '';
+  } catch (err) {
+    $('t3Status').textContent = err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+$('t3Connect').onclick = () => connectT3($('t3Connect'), '');
+$('t3PasteConnect').onclick = () => connectT3($('t3PasteConnect'), $('t3Link').value);
+
+$('t3Disconnect').onclick = () => window.api.t3Unpair();
 
 // ---------- voice cloning ----------
 

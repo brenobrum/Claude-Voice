@@ -34,9 +34,10 @@ Instale o Claude Voice nesta máquina (macOS, Apple Silicon) e deixe o `/voice` 
       - If the tool doesn't exist: tell the user the voice server isn't loaded in this session (restart the session, or start one with `claude-voice` in a terminal) and stop.
       - If it returns an error, show it and stop.
 
-   2. Decide how speech will reach you:
-      - **Claude desktop app session** (your system prompt says you're running inside the Claude desktop app): channels aren't delivered here, so start a `Monitor` with the `ws` URL from the attach result, description "voice messages", `timeout_ms` 1800000. Each event `[voice] The user said …` is the user speaking to you. Whenever that monitor expires (timeout), re-arm it with the same URL. If it closes with code 4000 ("voice app disconnected"), the user closed the app: don't re-arm; voice is off until they run /voice again.
-      - **Terminal session started with `claude-voice`**: don't start a Monitor; speech arrives as `<channel source="voice">` messages.
+   2. Decide how speech will reach you: follow what the attach result says.
+      - **Channels not delivered** (Claude desktop app, T3 Code or another app that runs Claude Code through the Agent SDK): start a `Monitor` with the `ws` URL from the attach result, description "voice messages", `timeout_ms` 1800000. Each event `[voice] The user said …` is the user speaking to you. Whenever that monitor expires (timeout), re-arm it with the same URL. If it closes with code 4000 ("voice app disconnected"), the user closed the app: don't re-arm; voice is off until they run /voice again.
+      - **Terminal session started with `claude-voice`** (channels enabled): don't start a Monitor; speech arrives as `<channel source="voice">` messages.
+      - **Inside T3 Code** (the attach result says the session runs inside T3 Code): the Claude Voice app talks to the T3 thread by itself; don't start a Monitor or call speak, just reply with the line the result gives.
 
    3. Reply in one short line: "🎙️ Voice attached — just talk."
 

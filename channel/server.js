@@ -39,13 +39,28 @@ let appUi = null;          // latest UI state reported by the desktop app (panel
 let uiClient = null;       // the socket that reported it
 const liveMonitors = () => [...monitors].filter((m) => m.readyState === 1).length;
 
-// Channel messages only reach terminal sessions started with channels enabled (claude-voice);
-// Claude desktop-app sessions need a Monitor instead. Tell them apart by the parent's command line.
+// Channel messages only reach terminal sessions started with channels enabled (claude-voice); sessions run by
+// other apps (Claude desktop app, T3 Code, anything on the Agent SDK) need a Monitor instead. Tell them apart by
+// the parent's command line.
 let channelsDelivered = true;
 try {
   const parent = require('child_process').execFileSync('ps', ['-o', 'command=', '-p', String(process.ppid)], { encoding: 'utf8' });
   channelsDelivered = /development-channels|--channels/.test(parent);
 } catch {}
+
+// Sessions run by T3 Code: there the Claude Voice app talks to T3 itself (src/t3.js), so /voice only acknowledges.
+function underT3() {
+  let pid = process.ppid;
+  for (let i = 0; i < 8 && pid > 1; i++) {
+    try {
+      const [ppid, ...cmd] = require('child_process').execFileSync('ps', ['-o', 'ppid=,command=', '-p', String(pid)], { encoding: 'utf8' }).trim().split(/\s+/);
+      if (/T3 Code|t3code|\/\.t3\//i.test(cmd.join(' '))) return true;
+      pid = Number(ppid);
+    } catch { return false; }
+  }
+  return false;
+}
+const inT3 = !channelsDelivered && underT3();
 
 // Phone pairing: a stable token shared by every session on this Mac. Absent = local only.
 const REMOTE_FILE = path.join(os.homedir(), '.claude-voice', 'remote.json');
@@ -625,6 +640,17 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
       return text('The iPhone app is not paired with this Mac yet. Tell the user to run "claude-voice pair" in a terminal, '
         + 'scan the QR code with the iPhone app, then start a new Claude Code session (running sessions only listen locally).', true);
     }
+    if (inT3 && !phone) {
+      return {
+        content: [{
+          type: 'text',
+          text: 'This session runs inside T3 Code. The Claude Voice app handles voice mode for T3 threads by itself '
+            + '(it reads this thread through T3), so do not start a Monitor and do not call speak. '
+            + 'Reply with one short line: "🎙️ Voice mode on." If the app does not open, the user needs to connect T3 Code '
+            + 'once in Claude Voice → Settings → T3 Code.',
+        }],
+      };
+    }
     if (!phone) {
       const err = await openApp();
       if (err) return { content: [{ type: 'text', text: err }], isError: true };
@@ -637,9 +663,12 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
             ? `This session is announced on the local network as "${path.basename(cwd)}"; the user picks it in the iPhone app. `
               + `${clients.size ? 'A voice app is already connected.' : 'No voice app is connected yet.'}`
             : 'Claude Voice is opening and connecting to this session.',
-          `If this session runs in the Claude desktop app (channels are not delivered there), start a Monitor with ws url ${monitorUrl()} `
-            + '(description "voice messages", timeout_ms 1800000) to receive the user\'s speech, and re-arm it whenever it expires. '
-            + 'In a terminal session started with claude-voice, do not start the Monitor: speech arrives as <channel source="voice"> messages.',
+          channelsDelivered
+            ? 'Channels are enabled in this session (started with claude-voice): do not start a Monitor, speech arrives as '
+              + '<channel source="voice"> messages.'
+            // Claude desktop app, T3 Code and other apps that run Claude Code through the Agent SDK.
+            : `Channels are not delivered to this session, so start a Monitor now with ws url ${monitorUrl()} `
+              + '(description "voice messages", timeout_ms 1800000) to receive the user\'s speech, and re-arm it whenever it expires.',
           ...(hooksInstalled() ? [] : ['The voice app can\'t show what you are doing (thinking, running tools) because the Claude Voice hooks '
             + 'aren\'t installed. Mention once, in text, that running "claude-voice hooks" in a terminal enables it.']),
         ].join('\n'),

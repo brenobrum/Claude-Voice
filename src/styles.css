@@ -193,3 +193,11 @@ dialog.clone blockquote { margin: 0 0 12px; padding: 10px 12px; border-left: 3px
 button.rec { border-color: var(--danger); color: var(--danger); }
 button.rec.on { background: var(--danger); color: #fff; animation: pulse 1.4s ease-out infinite; }
 .rec-time { font: 12px ui-monospace, Menlo, monospace; color: var(--muted); flex: 1; }
+
+/* T3 Code */
+.t3-status { margin: 0 0 8px; font-size: 12px; color: var(--muted); }
+.t3-status.ok { color: var(--text); }
+dialog .sub code { font: 11px ui-monospace, Menlo, monospace; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; color: var(--text); }
+.t3-manual { margin-top: 8px; }
+.t3-manual summary { cursor: pointer; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+#t3Connect { margin-bottom: 4px; }
