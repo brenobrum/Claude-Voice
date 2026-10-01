@@ -11,7 +11,8 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { execFile } = require('child_process');
-const WebSocket = require('ws');
+
+const OPEN = 1; // WebSocket.OPEN (ws is required lazily, see connect)
 
 const CREDS_FILE = path.join(os.homedir(), '.claude-voice', 't3.json');
 const t3Home = () => process.env.T3CODE_HOME || path.join(os.homedir(), '.t3');
@@ -58,6 +59,54 @@ function speakable(text) {
     .trim();
 }
 
+// ---------- pairing (also used by `claude-voice t3`, bin/t3.js) ----------
+
+// Exchange a one-time pairing link or token for a bearer token and save it.
+async function pairWithLink(input) {
+  const parsed = parsePairing(input);
+  if (!parsed) throw new Error('Paste the pairing link from T3 Code (Settings → Connections).');
+  const base = (parsed.origin || serverOrigin() || '').replace(/\/$/, '');
+  if (!base) throw new Error("T3 Code isn't running. Open it and try again.");
+  const res = await fetch(`${base}/oauth/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange',
+      subject_token: parsed.token,
+      subject_token_type: 'urn:t3:params:oauth:token-type:environment-bootstrap',
+      requested_token_type: 'urn:ietf:params:oauth:token-type:access_token',
+      client_label: 'Claude Voice',
+      client_device_type: 'desktop',
+    }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || !body.access_token) {
+    throw new Error(`T3 Code refused the pairing link (${body.error_description || body.error || `HTTP ${res.status}`}). Links expire after a few minutes and work once; create a new one.`);
+  }
+  const creds = { origin: base, token: body.access_token, expiresAt: body.expires_in ? Date.now() + body.expires_in * 1000 : null };
+  fs.mkdirSync(path.dirname(CREDS_FILE), { recursive: true });
+  fs.writeFileSync(CREDS_FILE, JSON.stringify(creds, null, 2), { mode: 0o600 });
+  return creds;
+}
+
+// No link needed: mint one with the `t3 pair` command inside the installed T3 Code app.
+async function autoPair() {
+  const app = fs.readdirSync('/Applications').find((n) => /^T3 Code.*\.app$/.test(n));
+  if (!app) throw new Error("T3 Code isn't installed in /Applications.");
+  if (!serverOrigin()) throw new Error("T3 Code isn't running. Open it and try again.");
+  const root = path.join('/Applications', app, 'Contents');
+  const exe = path.join(root, 'MacOS', fs.readdirSync(path.join(root, 'MacOS'))[0]);
+  const cli = path.join(root, 'Resources', 'app.asar', 'apps', 'server', 'dist', 'bin.mjs');
+  const out = await new Promise((resolve, reject) => {
+    execFile(exe, [cli, 'pair', '--label', 'Claude Voice', '--ttl', '2m'], {
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, timeout: 30000,
+    }, (err, stdout, stderr) => (err ? reject(new Error(`t3 pair failed: ${String(stderr || err.message).trim().split('\n').pop()}`)) : resolve(stdout)));
+  });
+  const link = out.match(/Pairing URL:\s*(\S+)/)?.[1] || out.match(/Token:\s*(\S+)/)?.[1];
+  if (!link) throw new Error("Couldn't read the pairing link from t3 pair.");
+  return pairWithLink(link);
+}
+
 function createT3({ onAttach, onSpeak, onActivity, onState, onUserText, log = () => {} }) {
   let creds = readJson(CREDS_FILE);
   let ws = null;
@@ -102,7 +151,7 @@ function createT3({ onAttach, onSpeak, onActivity, onState, onUserText, log = ()
   function cancel(id) {
     if (!id || !streams.has(id)) return;
     streams.delete(id);
-    if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ _tag: 'Interrupt', requestId: id, interruptors: [] }));
+    if (ws?.readyState === OPEN) ws.send(JSON.stringify({ _tag: 'Interrupt', requestId: id, interruptors: [] }));
   }
 
   function onWire(raw) {
@@ -133,14 +182,16 @@ function createT3({ onAttach, onSpeak, onActivity, onState, onUserText, log = ()
 
   function connect() {
     clearTimeout(retryTimer);
-    if (!creds?.token) { setStatus({ state: 'unpaired' }); return; }
+    if (!creds?.token) creds = readJson(CREDS_FILE); // `claude-voice t3` may have paired meanwhile
+    if (!creds?.token) { setStatus({ state: 'unpaired' }); schedule(10000); return; }
     origin = serverOrigin() || creds.origin;
     if (!origin || !serverOrigin()) { setStatus({ state: 'searching' }); schedule(); return; }
+    const WebSocket = require('ws'); // loaded here so bin/t3.js (pairing only) needs no node_modules
     const sock = new WebSocket(`${origin.replace(/^http/, 'ws')}/ws`, { headers: { Authorization: `Bearer ${creds.token}` } });
     ws = sock;
     sock.on('open', () => {
       setStatus({ state: 'connected' });
-      pingTimer = setInterval(() => sock.readyState === WebSocket.OPEN && sock.send(JSON.stringify({ _tag: 'Ping' })), 20000);
+      pingTimer = setInterval(() => sock.readyState === OPEN && sock.send(JSON.stringify({ _tag: 'Ping' })), 20000);
       rpc('orchestration.subscribeShell', {}, onShell);
       if (attached) subscribeThread(attached.threadId);
     });
@@ -171,8 +222,10 @@ function createT3({ onAttach, onSpeak, onActivity, onState, onUserText, log = ()
       for (const p of item.snapshot.projects || []) projects.set(p.id, p);
       for (const t of item.snapshot.threads || []) {
         threads.set(t.id, t);
-        // Anything sent before we connected is old news.
-        if (!seenUserAt.has(t.id)) seenUserAt.set(t.id, t.latestUserMessageAt);
+        if (seenUserAt.has(t.id)) continue;
+        seenUserAt.set(t.id, t.latestUserMessageAt);
+        // Older messages are old news, but a /voice from just now may be what opened the app.
+        if (!attached && !t.archivedAt && Date.now() - Date.parse(t.latestUserMessageAt || 0) < 60000) checkForVoiceCommand(t.id);
       }
     } else if (item.kind === 'project-upserted') {
       projects.set(item.project.id, item.project);
@@ -219,7 +272,7 @@ function createT3({ onAttach, onSpeak, onActivity, onState, onUserText, log = ()
   }
 
   function subscribeThread(threadId) {
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (!ws || ws.readyState !== OPEN) return;
     let ready = false;
     attached.requestId = rpc('orchestration.subscribeThread', { threadId }, (item) => {
       if (item.kind === 'snapshot') {
@@ -311,53 +364,11 @@ function createT3({ onAttach, onSpeak, onActivity, onState, onUserText, log = ()
     }
   }
 
-  // ---------- pairing ----------
-
-  async function pair(input) {
-    const parsed = parsePairing(input);
-    if (!parsed) throw new Error('Paste the pairing link from T3 Code (Settings → Connections).');
-    const base = (parsed.origin || serverOrigin() || '').replace(/\/$/, '');
-    if (!base) throw new Error("T3 Code isn't running. Open it and try again.");
-    const res = await fetch(`${base}/oauth/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange',
-        subject_token: parsed.token,
-        subject_token_type: 'urn:t3:params:oauth:token-type:environment-bootstrap',
-        requested_token_type: 'urn:ietf:params:oauth:token-type:access_token',
-        client_label: 'Claude Voice',
-        client_device_type: 'desktop',
-      }),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok || !body.access_token) {
-      throw new Error(`T3 Code refused the pairing link (${body.error_description || body.error || `HTTP ${res.status}`}). Links expire after a few minutes and work once; create a new one.`);
-    }
-    creds = { origin: base, token: body.access_token, expiresAt: body.expires_in ? Date.now() + body.expires_in * 1000 : null };
-    fs.mkdirSync(path.dirname(CREDS_FILE), { recursive: true });
-    fs.writeFileSync(CREDS_FILE, JSON.stringify(creds, null, 2), { mode: 0o600 });
+  async function pair(link) {
+    creds = await (String(link || '').trim() ? pairWithLink(link) : autoPair());
     if (ws) ws.close();
     connect();
     return true;
-  }
-
-  // One click: mint a pairing link with the `t3 pair` command inside the installed T3 Code app.
-  async function autoPair() {
-    const app = fs.readdirSync('/Applications').find((n) => /^T3 Code.*\.app$/.test(n));
-    if (!app) throw new Error("T3 Code isn't installed in /Applications.");
-    if (!serverOrigin()) throw new Error("T3 Code isn't running. Open it and try again.");
-    const root = path.join('/Applications', app, 'Contents');
-    const exe = path.join(root, 'MacOS', fs.readdirSync(path.join(root, 'MacOS'))[0]);
-    const cli = path.join(root, 'Resources', 'app.asar', 'apps', 'server', 'dist', 'bin.mjs');
-    const out = await new Promise((resolve, reject) => {
-      execFile(exe, [cli, 'pair', '--label', 'Claude Voice', '--ttl', '2m'], {
-        env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, timeout: 30000,
-      }, (err, stdout, stderr) => (err ? reject(new Error(`t3 pair failed: ${String(stderr || err.message).trim().split('\n').pop()}`)) : resolve(stdout)));
-    });
-    const link = out.match(/Pairing URL:\s*(\S+)/)?.[1] || out.match(/Token:\s*(\S+)/)?.[1];
-    if (!link) throw new Error("Couldn't read the pairing link from t3 pair.");
-    return pair(link);
   }
 
   function unpair() {
@@ -371,7 +382,7 @@ function createT3({ onAttach, onSpeak, onActivity, onState, onUserText, log = ()
   return {
     start: connect,
     stop() { clearTimeout(retryTimer); const s = ws; ws = null; s?.close(); },
-    pair: (link) => (String(link || '').trim() ? pair(link) : autoPair()),
+    pair,
     unpair,
     attach,
     detach,
@@ -381,4 +392,4 @@ function createT3({ onAttach, onSpeak, onActivity, onState, onUserText, log = ()
   };
 }
 
-module.exports = { createT3, speakable };
+module.exports = { createT3, speakable, autoPair, pairWithLink, serverOrigin };

@@ -60,6 +60,8 @@ Instale o Claude Voice nesta máquina (macOS, Apple Silicon) e deixe o `/voice` 
 
 10. **Voz local grátis:** rode `node $REPO/bin/local-voice.js` (precisa do `uv`; se faltar, `brew install uv`). Isso instala o Chatterbox, que roda a voz do Claude direto no Mac, de graça, baixa o modelo (~2,6 GB) e cria uma voz feminina inicial. No app ele aparece em Settings → "On this Mac", onde também dá pra clonar a própria voz.
 
-11. **Verificação:** `claude mcp get voice` deve mostrar o servidor conectado; abra o app uma vez (`open -a "Claude Voice"`) pra liberar o microfone.
+11. **T3 Code (se estiver instalado):** se existir um app `T3 Code*.app` em `/Applications`, abra o T3 Code (`open -a` com o nome do app), espere uns segundos e rode `node $REPO/bin/t3.js`. Isso conecta o Claude Voice ao T3: digitar `/voice` (ou `$voice`) numa conversa do T3 abre o voice mode nela, com qualquer agente. Se o T3 não estiver instalado, pule este passo.
+
+12. **Verificação:** `claude mcp get voice` deve mostrar o servidor conectado; abra o app uma vez (`open -a "Claude Voice"`) pra liberar o microfone.
 
 No final, me diga em 3 linhas: reinicie o Claude Code (ou rode `claude-voice` no terminal), digite `/voice`, e na primeira vez coloque a chave da OpenAI nas Settings do app (pra voz grátis, escolha "On this Mac" ali).

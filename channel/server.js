@@ -144,13 +144,12 @@ function monitorUrl() {
   return `ws://127.0.0.1:${port}/monitor?token=${token}`;
 }
 
-function openApp() {
+function openApp(args = [`--connect=ws://127.0.0.1:${port}/?token=${token}`, `--cwd=${cwd}`]) {
   return new Promise((resolve) => {
-    const url = `ws://127.0.0.1:${port}/?token=${token}`;
     // We run as Electron-in-Node mode; don't let the GUI app inherit that.
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
-    execFile('open', ['-n', '-a', 'Claude Voice', '--args', `--connect=${url}`, `--cwd=${cwd}`], { env }, (err) => {
+    execFile('open', ['-n', '-a', 'Claude Voice', '--args', ...args], { env }, (err) => {
       resolve(err ? `Could not open Claude Voice: ${err.message}. Is it installed in /Applications?` : null);
     });
   });
@@ -641,6 +640,7 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
         + 'scan the QR code with the iPhone app, then start a new Claude Code session (running sessions only listen locally).', true);
     }
     if (inT3 && !phone) {
+      await openApp(['--t3']); // the app finds this thread's /voice through T3 itself
       return {
         content: [{
           type: 'text',

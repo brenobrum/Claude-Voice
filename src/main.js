@@ -1065,10 +1065,11 @@ function qrSvg(text) {
 // and only accept a value that is actually a ws:// URL.
 function parseArgs(argv) {
   const isWs = (v) => typeof v === 'string' && /^wss?:\/\//.test(v);
+  const t3 = argv.includes('--t3'); // opened by /voice in a T3 Code thread: no Claude thread to start
   const eq = argv.find((a) => a.startsWith('--connect='));
-  if (eq && isWs(eq.slice('--connect='.length))) return { connect: eq.slice('--connect='.length) };
-  if (!argv.includes('--connect')) return { connect: null };
-  return { connect: argv.find(isWs) || null };
+  if (eq && isWs(eq.slice('--connect='.length))) return { connect: eq.slice('--connect='.length), t3 };
+  if (!argv.includes('--connect')) return { connect: null, t3 };
+  return { connect: argv.find(isWs) || null, t3 };
 }
 
 function handleArgs(argv) {
@@ -1214,7 +1215,8 @@ app.whenReady().then(async () => {
   t3.start();
   win.webContents.once('did-finish-load', () => {
     handleArgs(process.argv);
-    if (!parseArgs(process.argv).connect) startThread();
+    const args = parseArgs(process.argv);
+    if (!args.connect && !args.t3) startThread();
     // Warm up the voice socket so the first reply starts instantly.
     if (settings.openaiKey && settings.ttsEngine === 'realtime') realtimeTts.connect().catch(() => {});
     if (settings.ttsEngine === 'local') localTts.start().catch((err) => send('error', err.message));
